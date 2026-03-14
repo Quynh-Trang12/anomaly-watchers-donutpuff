@@ -1,0 +1,287 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    /* Banking/Fintech color palette */
+    --background: 210 20% 98%;
+    --foreground: 215 25% 15%;
+
+    --card: 0 0% 100%;
+    --card-foreground: 215 25% 15%;
+
+    --popover: 0 0% 100%;
+    --popover-foreground: 215 25% 15%;
+
+    /* Deep teal - trust & professionalism */
+    --primary: 175 85% 25%;
+    --primary-foreground: 0 0% 100%;
+
+    --secondary: 210 15% 94%;
+    --secondary-foreground: 215 25% 25%;
+
+    --muted: 210 15% 92%;
+    --muted-foreground: 215 15% 45%;
+
+    --accent: 175 60% 95%;
+    --accent-foreground: 175 85% 20%;
+
+    /* Risk decision colors */
+    --success: 152 70% 40%;
+    --success-foreground: 0 0% 100%;
+    --success-muted: 152 50% 95%;
+
+    --warning: 38 92% 50%;
+    --warning-foreground: 0 0% 100%;
+    --warning-muted: 38 80% 95%;
+
+    --danger: 0 72% 51%;
+    --danger-foreground: 0 0% 100%;
+    --danger-muted: 0 60% 96%;
+
+    --destructive: 0 72% 51%;
+    --destructive-foreground: 0 0% 100%;
+
+    --border: 214 20% 88%;
+    --input: 214 20% 88%;
+    --ring: 175 85% 25%;
+
+    --radius: 0.625rem;
+
+    /* Sidebar */
+    --sidebar-background: 210 20% 97%;
+    --sidebar-foreground: 215 25% 25%;
+    --sidebar-primary: 175 85% 25%;
+    --sidebar-primary-foreground: 0 0% 100%;
+    --sidebar-accent: 175 60% 95%;
+    --sidebar-accent-foreground: 175 85% 20%;
+    --sidebar-border: 214 20% 88%;
+    --sidebar-ring: 175 85% 25%;
+
+    /* Custom gradients & shadows */
+    --gradient-primary: linear-gradient(135deg, hsl(175 85% 25%), hsl(175 75% 35%));
+    --gradient-hero: linear-gradient(180deg, hsl(210 20% 98%) 0%, hsl(175 40% 97%) 100%);
+    --shadow-card: 0 1px 3px 0 rgba(0, 0, 0, 0.06), 0 1px 2px -1px rgba(0, 0, 0, 0.06);
+    --shadow-elevated: 0 4px 12px -2px rgba(0, 0, 0, 0.08), 0 2px 6px -2px rgba(0, 0, 0, 0.04);
+  }
+
+  .dark {
+    --background: 215 25% 10%;
+    --foreground: 210 20% 95%;
+
+    --card: 215 25% 13%;
+    --card-foreground: 210 20% 95%;
+
+    --popover: 215 25% 13%;
+    --popover-foreground: 210 20% 95%;
+
+    --primary: 175 70% 45%;
+    --primary-foreground: 215 25% 10%;
+
+    --secondary: 215 20% 20%;
+    --secondary-foreground: 210 20% 90%;
+
+    --muted: 215 20% 18%;
+    --muted-foreground: 210 15% 60%;
+
+    --accent: 175 50% 20%;
+    --accent-foreground: 175 70% 85%;
+
+    --success: 152 60% 45%;
+    --success-foreground: 0 0% 100%;
+    --success-muted: 152 40% 15%;
+
+    --warning: 38 80% 55%;
+    --warning-foreground: 0 0% 100%;
+    --warning-muted: 38 60% 15%;
+
+    --danger: 0 65% 55%;
+    --danger-foreground: 0 0% 100%;
+    --danger-muted: 0 50% 15%;
+
+    --destructive: 0 65% 55%;
+    --destructive-foreground: 0 0% 100%;
+
+    --border: 215 20% 22%;
+    --input: 215 20% 22%;
+    --ring: 175 70% 45%;
+
+    --sidebar-background: 215 25% 12%;
+    --sidebar-foreground: 210 20% 90%;
+    --sidebar-primary: 175 70% 45%;
+    --sidebar-primary-foreground: 215 25% 10%;
+    --sidebar-accent: 175 50% 20%;
+    --sidebar-accent-foreground: 175 70% 85%;
+    --sidebar-border: 215 20% 22%;
+    --sidebar-ring: 175 70% 45%;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply bg-background text-foreground antialiased;
+    font-feature-settings: "cv02", "cv03", "cv04", "cv11";
+  }
+
+  h1, h2, h3, h4, h5, h6 {
+    @apply font-semibold tracking-tight text-foreground;
+  }
+
+  /* Focus styles for accessibility */
+  :focus-visible {
+    @apply outline-none ring-2 ring-ring ring-offset-2 ring-offset-background;
+  }
+
+  /* Reduced motion */
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+    }
+  }
+}
+
+@layer components {
+  /* Decision badges */
+  .badge-approve {
+    @apply inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-sm font-medium;
+    background-color: hsl(var(--success-muted));
+    color: hsl(var(--success));
+  }
+
+  .badge-stepup {
+    @apply inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-sm font-medium;
+    background-color: hsl(var(--warning-muted));
+    color: hsl(var(--warning));
+  }
+
+  .badge-block {
+    @apply inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-sm font-medium;
+    background-color: hsl(var(--danger-muted));
+    color: hsl(var(--danger));
+  }
+
+  /* Risk score indicator */
+  .risk-low {
+    @apply text-success;
+  }
+
+  .risk-medium {
+    @apply text-warning;
+  }
+
+  .risk-high {
+    @apply text-danger;
+  }
+
+  /* Card sections */
+  .section-card {
+    @apply bg-card rounded-lg p-4 sm:p-6;
+    box-shadow: var(--shadow-card);
+  }
+
+  .section-card-elevated {
+    @apply bg-card rounded-lg p-4 sm:p-6;
+    box-shadow: var(--shadow-elevated);
+  }
+
+  /* Sticky bottom bar */
+  .sticky-bottom-bar {
+    @apply fixed bottom-0 left-0 right-0 bg-card border-t border-border p-2 sm:p-4 z-40;
+    box-shadow: 0 -4px 12px -2px rgba(0, 0, 0, 0.06);
+  }
+
+  /* Form fieldsets */
+  .form-fieldset {
+    @apply border border-border rounded-lg p-3 sm:p-4 space-y-3 sm:space-y-4;
+  }
+
+  .form-legend {
+    @apply px-2 text-sm font-medium text-muted-foreground;
+  }
+
+  /* Disclaimer banner */
+  .disclaimer-banner {
+    @apply bg-warning-muted text-warning-foreground px-4 py-2 text-center text-sm font-medium;
+    background-color: hsl(38 80% 95%);
+    color: hsl(38 90% 30%);
+  }
+}
+
+@layer utilities {
+  .text-success {
+    color: hsl(var(--success));
+  }
+
+  .text-warning {
+    color: hsl(var(--warning));
+  }
+
+  .text-danger {
+    color: hsl(var(--danger));
+  }
+
+  .bg-success {
+    background-color: hsl(var(--success));
+  }
+
+  .bg-warning {
+    background-color: hsl(var(--warning));
+  }
+
+  .bg-danger {
+    background-color: hsl(var(--danger));
+  }
+
+  .bg-success-muted {
+    background-color: hsl(var(--success-muted));
+  }
+
+  .bg-warning-muted {
+    background-color: hsl(var(--warning-muted));
+  }
+
+  .bg-danger-muted {
+    background-color: hsl(var(--danger-muted));
+  }
+
+  /* Hero gradient background */
+  .bg-gradient-hero {
+    background: var(--gradient-hero);
+  }
+
+  /* Animation utilities */
+  .animate-fade-in {
+    animation: fadeIn 0.3s ease-out;
+  }
+
+  @keyframes fadeIn {
+    from {
+      opacity: 0;
+      transform: translateY(8px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+
+  .animate-pulse-subtle {
+    animation: pulseSoft 2s ease-in-out infinite;
+  }
+
+  @keyframes pulseSoft {
+    0%, 100% {
+      opacity: 1;
+    }
+    50% {
+      opacity: 0.7;
+    }
+  }
+}

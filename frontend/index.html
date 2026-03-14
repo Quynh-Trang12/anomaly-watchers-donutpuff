@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <link rel="icon" type="image/png" href="/shield.png" />
+    <title>AnomalyWatchers | Transaction Risk Workbench</title>
+    <meta name="description" content="Next-gen transaction fraud detection. See the invisible. Block the impossible." />
+    <meta name="author" content="AnomalyWatchers Inc." />
+
+    <meta property="og:title" content="AnomalyWatchers | Transaction Risk Workbench" />
+    <meta property="og:description" content="Experience the power of real-time anomaly detection. Simulate payment flows and evaluate risk with our advanced ML engine." />
+    <meta property="og:type" content="website" />
+    <!-- <meta property="og:image" content="https://lovable.dev/opengraph-image-p98pqg.png" />
+
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:site" content="@Lovable" />
+    <meta name="twitter:image" content="https://lovable.dev/opengraph-image-p98pqg.png" /> -->
+  </head>
+
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+    <script>
+      // Remove Lovable badge
+      const observer = new MutationObserver(() => {
+        const badge = document.getElementById('lovable-badge');
+        if (badge) {
+          badge.remove();
+          observer.disconnect();
+        }
+      });
+      observer.observe(document.body, { childList: true, subtree: true });
+    </script>
+  </body>
+</html>
