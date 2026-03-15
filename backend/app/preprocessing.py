@@ -35,14 +35,18 @@ def drop_post_transaction_leaks(df: pd.DataFrame) -> pd.DataFrame:
     return df.drop(columns=[c for c in LEAKED_COLUMNS if c in df.columns])
 
 
-def engineer_financial_ratios(df: pd.DataFrame) -> pd.DataFrame:
-    EPSILON = 1e-5
+def engineer_financial_ratios(df):
+    """Construct ratio features expressing transaction magnitude relative to account balances."""
     df = df.copy()
+
+    # 1. Amount to Destination Ratio (Detecting Mule Inflows)
     df["amount_to_destination_ratio"] = df["transaction_amount"] / (
-        df["destination_old_balance"] + EPSILON
+        df["destination_old_balance"] + 1.0
     )
+
+    # 2. Account Drain Ratio (Detecting Account Takeovers)
     df["account_drain_ratio"] = df["transaction_amount"] / (
-        df["originator_old_balance"] + EPSILON
+        df["originator_old_balance"] + 1.0
     )
     return df
 
