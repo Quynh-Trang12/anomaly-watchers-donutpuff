@@ -65,14 +65,12 @@ def apply_cyclical_time_encoding(df: pd.DataFrame) -> pd.DataFrame:
     return df
 
 
-def drop_redundant_raw_columns(df: pd.DataFrame) -> pd.DataFrame:
-    RAW_COLUMNS_TO_DROP = [
-        "transaction_amount",
-        "step",
-        "originator_old_balance",
-        "destination_old_balance",
-    ]
-    return df.drop(columns=[c for c in RAW_COLUMNS_TO_DROP if c in df.columns])
+RAW_COLUMNS_TO_DROP = ["transaction_amount", "step"]
+
+
+def drop_redundant_raw_columns(df):
+    """Remove original raw columns superseded by engineered features."""
+    return df.drop(columns=RAW_COLUMNS_TO_DROP)
 
 
 def encode_categoricals_and_drop_identifiers(df: pd.DataFrame) -> pd.DataFrame:
@@ -99,6 +97,9 @@ def encode_categoricals_and_drop_identifiers(df: pd.DataFrame) -> pd.DataFrame:
 
     # Standardize column order
     expected_order = [
+        "originator_old_balance",
+        "destination_old_balance",
+        "is_fraud",
         "amount_to_destination_ratio",
         "account_drain_ratio",
         "log_transaction_amount",
