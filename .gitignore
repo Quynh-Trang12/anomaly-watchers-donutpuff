@@ -43,3 +43,6 @@ debug_model.py
 
 # Environment variables
 *.env
+
+# Backend historical models
+backend/trained_models/archive/*

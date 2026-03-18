@@ -54,8 +54,7 @@ anomaly-watchers-donutpuff/
 │   ├── app/                                  # Core application logic
 │   │   ├── __init__.py                       # Marks ./backend/app as a Python package
 │   │   ├── main.py                           # Application entry point, API routes, and heuristic engine
-│   │   ├── preprocessing.py                  # Shared ETL pipeline logic (build_feature_matrix)
-│   │   └── schemas.py                        # Pydantic models for strict API input/output validation
+│   │   └── preprocessing.py                  # Shared ETL pipeline logic (build_feature_matrix)
 │   │
 │   ├── models/                               # Serialized ML models and artifacts with v2 for updated models (continuous learning)
 │   │   ├── feature_columns.pkl               # Pickled list of exact column names for schema alignment
@@ -66,9 +65,7 @@ anomaly-watchers-donutpuff/
 │   │
 │   ├── tests/                                # Backend test suite
 │   │   └── __init__.py                       # Marks ./backend/tests as a Python test package
-│   │
 │   ├── __init__.py                           # Marks ./backend as a Python package
-│   │
 │   └── requirements.txt                      # Python dependencies
 │
 ├── frontend/                                 # React TypeScript application
