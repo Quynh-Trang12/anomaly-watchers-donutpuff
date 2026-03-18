@@ -59,21 +59,13 @@ anomaly-watchers-donutpuff/
 │   │
 │   ├── models/                               # Serialized ML models and artifacts with v2 for updated models (continuous learning)
 │   │   ├── feature_columns.pkl               # Pickled list of exact column names for schema alignment
-│   │   ├── model_isolation_forest.pkl        # Isolation Forest model weights
-│   │   ├── model_isolation_forest_v2.pkl
-│   │   ├── model_logistic.pkl                # Logistic Regression model weights
-│   │   ├── model_logistic_v2.pkl
 │   │   ├── model_rf.pkl                      # Random Forest model pipeline
 │   │   ├── model_rf_v2.pkl
-│   │   ├── model_xgboost.json                # XGBoost native JSON model weights
-│   │   ├── model_xgboost_v2.json
-│   │   ├── scaler.pkl                        # StandardScaler fitting parameters
-│   │   └── scaler_v2.pkl
+│   │   ├── model_xgboost.pkl                 # XGBoost model pipeline
+│   │   └── model_xgboost_v2.pkl
 │   │
 │   ├── tests/                                # Backend test suite
-│   │   ├── __init__.py                       # Marks ./backend/tests as a Python test package
-│   │   ├── test_endpoints.py                 # API endpoint tests
-│   │   └── test_prob.py                      # Probability calculation tests
+│   │   └── __init__.py                       # Marks ./backend/tests as a Python test package
 │   │
 │   ├── __init__.py                           # Marks ./backend as a Python package
 │   │
