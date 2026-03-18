@@ -121,7 +121,7 @@ def encode_categoricals_and_drop_identifiers(df: pd.DataFrame) -> pd.DataFrame:
 def build_feature_matrix(df_raw: pd.DataFrame) -> pd.DataFrame:
     """
     Master pipeline execution function.
-    Ingests raw PaySim data and outputs the hardened 10-feature matrix (11 if training).
+    Ingests raw PaySim data and outputs the hardened 12-feature matrix.
     """
     return (
         df_raw.copy()
