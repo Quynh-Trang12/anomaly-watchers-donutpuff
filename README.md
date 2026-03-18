@@ -19,9 +19,9 @@ The primary objective of this project is to detect illicit transactions in highl
 
 The system evaluates incoming transactions using a multi-layered defense strategy defined in the initial analysis and continuous learning pipelines:
 
-1. **Primary Model: Random Forest Classifier**
+1. **Ensemble Model: Random Forest Classifier**
    The champion ensemble model optimized via `GridSearchCV`. To handle the extreme class imbalance, it utilizes `imblearn.pipeline.Pipeline` to apply the Synthetic Minority Over-sampling Technique (SMOTE) with a sampling strategy of 1.0 strictly within the cross-validation training folds. It achieves the highest AUPRC (0.9986) on the initial test set. During continuous learning, it is updated iteratively using `warm_start=True` to append new decision trees.
-2. **Secondary Model: XGBoost Classifier**
+2. **Challenger Model: XGBoost Classifier**
    A high-performance gradient boosting model utilized as a parallel evaluation engine. Like the Primary model, it relies on a SMOTE pipeline to artificially balance the fraud class during training, preventing the majority class from washing out the minority signal. It supports direct booster continuation (`xgb_model`) for incremental weight updates on new data chunks.
 3. **Baseline Model: Logistic Regression / SGDClassifier**
    A linear model incorporating `class_weight='balanced'` used to establish a performance floor. In the continuous learning phase, it is transitioned to an `SGDClassifier` optimizing for `log_loss` to support `partial_fit` batch training.
