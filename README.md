@@ -8,12 +8,12 @@ The primary objective of this project is to detect illicit transactions in highl
 
 ## Architecture
 
-| Layer                    | Technology                                      | Purpose                                                                  |
-| ------------------------ | ----------------------------------------------- | ------------------------------------------------------------------------ |
-| **Machine Learning**     | Python, scikit-learn, XGBoost, imbalanced-learn | Four-model architecture with GridSearchCV and SMOTE oversampling.        |
-| **Incremental Learning** | Pandas, joblib, sklearn.linear_model            | Prequential evaluation (test-then-train) pipeline for Big Data streams.  |
-| **Backend API**          | FastAPI, Pydantic, Uvicorn                      | Asynchronous inference endpoints with deterministic feature engineering. |
-| **Frontend UI**          | React, Vite, TypeScript, Tailwind CSS           | Real-time monitoring dashboard and interactive transaction simulator.    |
+| Layer                | Technology                                      | Purpose                                                                  |
+| -------------------- | ----------------------------------------------- | ------------------------------------------------------------------------ |
+| **Machine Learning** | Python, scikit-learn, XGBoost, imbalanced-learn | Four-model architecture with GridSearchCV and SMOTE oversampling.        |
+| **Prequential Loop** | Pandas, joblib, sklearn.linear_model            | Prequential evaluation (test-then-train) pipeline for Big Data streams.  |
+| **Backend API**      | FastAPI, Pydantic, Uvicorn                      | Asynchronous inference endpoints with deterministic feature engineering. |
+| **Frontend UI**      | React, Vite, TypeScript, Tailwind CSS           | Real-time monitoring dashboard and interactive transaction simulator.    |
 
 ### Machine Learning Four-Model Architecture
 
