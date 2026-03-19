@@ -16,7 +16,7 @@ The frontend interface and full system integration will be developed in Assignme
 
 | Layer                | Technology                                      | Purpose                                                                  |
 | -------------------- | ----------------------------------------------- | ------------------------------------------------------------------------ |
-| **Machine Learning** | Python, scikit-learn, XGBoost, imbalanced-learn | Four-model architecture with GridSearchCV and SMOTE oversampling.        |
+| **Machine Learning** | Python, scikit-learn, XGBoost, imbalanced-learn | Four-model architecture with SMOTE oversampling.        |
 | **Prequential Loop** | Pandas, joblib, sklearn.linear_model            | Prequential evaluation (test-then-train) pipeline for Big Data streams.  |
 | **Backend API**      | FastAPI, Pydantic, Uvicorn                      | Asynchronous inference endpoints with deterministic feature engineering. |
 | **Frontend UI**      | React, Vite, TypeScript, Tailwind CSS           | Real-time monitoring dashboard and interactive transaction simulator.    |
@@ -193,7 +193,7 @@ Prediction capability is currently demonstrated through:
 
 - cross-validation results in `01_primary_analysis.ipynb`
 
-- prequential evaluation in 02_continuous_learning.ipynb
+- prequential evaluation in `02_continuous_learning.ipynb`
 
 A production prediction endpoint and web-based input form will be implemented in Assignment 3.
 
