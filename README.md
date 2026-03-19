@@ -28,23 +28,25 @@ The system evaluates incoming transactions using a multi-layered defense strateg
 4. **Unsupervised Model: Isolation Forest**
    An anomaly detection model trained exclusively on legitimate transactions. It acts as a static monitor to detect completely novel attack patterns that lack historical labels.
 
-## Data Engineering and Continuous Learning
+## Data Engineering & Production-Grade Continuous Learning
 
-### Feature Engineering Pipeline
+### The Canonical Feature Pipeline
 
-The pipeline relies on a strict, deterministic ETL function (`build_feature_matrix`) encapsulated via `Pandas.pipe()`. This function is executed identically during offline training and online API inference to prevent schema mismatch. Key engineering steps include:
+The pipeline relies on a strict, deterministic ETL function (`build_feature_matrix`) encapsulated via `pandas.pipe()`. This modular architecture guarantees 100% schema alignment between offline training and the Assignment 3 FastAPI production environment, outputting a highly optimized **12-column Feature Matrix**. Key engineering steps include:
 
-- **Data Leakage Prevention**: Post-transaction balances (`newbalanceOrig`, `newbalanceDest`) are dropped immediately, as they act as future-state variables unavailable during real-time prediction.
-- **Ratio Features**: Contextual indicators such as `account_drain_ratio` and `amount_to_destination_ratio` are engineered. The Random Forest feature importance analysis confirms `account_drain_ratio` as the most critical predictive variable.
-- **Cyclical Time Encoding**: The linear 24-hour cycle is transformed using sine and cosine functions to accurately map temporal patterns.
-- **Logarithmic Scaling**: Transaction amounts are compressed using `log1p` to normalize extreme monetary outliers.
+- **Data Leakage Prevention:** Post-transaction balances (`newbalanceOrig`, `newbalanceDest`) are dropped immediately. These act as future-state variables unavailable during real-time inference and would artificially inflate model accuracy.
+- **Multicollinearity Defense (Reference Category Encoding):** The `CASH_IN` transaction type is explicitly dropped during one-hot encoding to prevent the dummy variable trap and preserve matrix rank.
+- **Statistically Validated Ratios:** Contextual indicators such as `account_drain_ratio` and `amount_to_destination_ratio` are engineered to capture illicit behavioral signatures. These features were mathematically validated using Mann-Whitney U tests and Cliff's Delta effect sizes prior to modeling.
+- **Cyclical Time Encoding:** The linear 24-hour cycle is transformed using sine and cosine functions to accurately map temporal fraud patterns without creating artificial boundaries at midnight.
+- **Logarithmic Scaling:** Transaction amounts are compressed using `log1p` to normalize extreme monetary outliers, preventing the distortion of linear separation boundaries.
 
-### Big Data Scaling Pipeline
+### Production-Grade Prequential Evaluation (~16.5M Row Stress Test)
 
-The continuous learning notebook processes generated datasets in chunks of approximately 3.4 million rows to prevent system memory overload.
+To prove the architecture's resilience against massive data streams, the continuous learning pipeline processes five additional generated datasets in discrete ~3.4 million row chunks.
 
-- **Prequential Evaluation**: To prevent data leakage, each new data chunk is evaluated against the existing models before any updates occur.
-- **Deferred Oversampling**: SMOTE is applied exclusively to the training subset after the prequential evaluation is complete, preserving the mathematical integrity of the test metrics.
+- **Temporal Leakage Defense (Test-Then-Train):** To simulate a high-fidelity production environment, each incoming chunk is evaluated against the current model state _prior_ to any weight updates. This ensures that reported AUPRC and F1-Scores reflect true zero-day detection capabilities on unmanipulated distributions.
+- **Champion Model Evolution:** The pipeline strictly updates the two top-performing models: **XGBoost** (via sequential continuation) and **Random Forest** (utilizing `warm_start=True` to iteratively add 10 trees per chunk, balancing complexity with computational cost).
+- **Memory Optimization:** The Baseline Logistic Regression is adapted to an `SGDClassifier (loss='log_loss')`, utilizing `partial_fit()` to process massive streams without triggering Out-of-Memory (OOM) system crashes.
 
 ## Repository Structure
 
@@ -56,15 +58,20 @@ anomaly-watchers-donutpuff/
 │   │   ├── main.py                           # Application entry point, API routes, and heuristic engine
 │   │   └── preprocessing.py                  # Shared ETL pipeline logic (build_feature_matrix)
 │   │
-│   ├── models/                               # Serialized ML models and artifacts with v2 for updated models (continuous learning)
+│   ├── trained_models/                       # Serialized ML models and artifacts with v2 for updated models (Prequential Evaluation)
 │   │   ├── feature_columns.pkl               # Pickled list of exact column names for schema alignment
 │   │   ├── model_rf.pkl                      # Random Forest model pipeline
 │   │   ├── model_rf_v2.pkl
 │   │   ├── model_xgboost.pkl                 # XGBoost model pipeline
-│   │   └── model_xgboost_v2.pkl
+│   │   ├── model_xgboost_v2.pkl
+│   │   └── archive/                          # Previous trained models
+│   │       ├── model_xgboost_v1.pkl
+│   │       ├── model_logistic_regression_v1.pkl
+│   │       └── ...*.pkl
 │   │
 │   ├── tests/                                # Backend test suite
 │   │   └── __init__.py                       # Marks ./backend/tests as a Python test package
+│   │
 │   ├── __init__.py                           # Marks ./backend as a Python package
 │   └── requirements.txt                      # Python dependencies
 │
