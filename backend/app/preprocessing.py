@@ -118,13 +118,27 @@ def encode_categoricals_and_drop_identifiers(df: pd.DataFrame) -> pd.DataFrame:
     return df[expected_order]
 
 
+# Standardized Dtype Map from Notebook 01
+DTYPE_MAP = {
+    'originator_old_balance': 'float32',
+    'destination_old_balance': 'float32',
+    'is_fraud': 'int8',
+    'amount_to_destination_ratio': 'float32',
+    'account_drain_ratio': 'float32',
+    'log_transaction_amount': 'float32',
+    'time_hour_sin': 'float32',
+    'time_hour_cos': 'float32',
+    'is_type_cash_out': 'int8',
+    'is_type_debit': 'int8',
+    'is_type_payment': 'int8', 
+    'is_type_transfer': 'int8'
+}
+
 def build_feature_matrix(df_raw: pd.DataFrame) -> pd.DataFrame:
     """
-    Master pipeline execution function.
     Ingests raw PaySim data and outputs the hardened 12-feature matrix.
     """
-    return (
-        df_raw.copy()
+    return (df_raw.copy()
         .pipe(rename_to_snake_case)
         .pipe(drop_post_transaction_leaks)
         .pipe(engineer_financial_ratios)
@@ -132,4 +146,5 @@ def build_feature_matrix(df_raw: pd.DataFrame) -> pd.DataFrame:
         .pipe(apply_cyclical_time_encoding)
         .pipe(drop_redundant_raw_columns)
         .pipe(encode_categoricals_and_drop_identifiers)
+        .astype({k: v for k, v in DTYPE_MAP.items() if k in DTYPE_MAP})
     )

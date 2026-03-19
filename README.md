@@ -2,51 +2,24 @@
 
 ## Project Overview
 
-This repository contains a full-stack, enterprise-grade machine learning platform designed for real-time financial fraud detection. The system integrates a four-model machine learning architecture with a FastAPI backend and a React-based frontend dashboard. It features continuous learning capabilities, enabling the models to scale across massive data streams while maintaining highly accurate prediction thresholds.
+This project focuses on the data engineering and machine learning pipeline for fraud detection.
 
-The primary objective of this project is to detect illicit transactions in highly imbalanced financial datasets without relying on misleading accuracy metrics. Instead, the architecture optimizes for the Area Under the Precision-Recall Curve (AUPRC) and the F1-Score, ensuring malicious behavior is identified while false positives are strictly minimized to preserve the legitimate customer experience.
+The current implementation includes:
+
+- Data preprocessing and feature engineering
+- Model training and evaluation
+- Continuous learning simulation (prequential evaluation)
+
+The frontend interface and full system integration will be developed in Assignment 3.
 
 ## Architecture
 
 | Layer                | Technology                                      | Purpose                                                                  |
 | -------------------- | ----------------------------------------------- | ------------------------------------------------------------------------ |
-| **Machine Learning** | Python, scikit-learn, XGBoost, imbalanced-learn | Four-model architecture with GridSearchCV and SMOTE oversampling.        |
+| **Machine Learning** | Python, scikit-learn, XGBoost, imbalanced-learn | Four-model architecture with SMOTE oversampling.                         |
 | **Prequential Loop** | Pandas, joblib, sklearn.linear_model            | Prequential evaluation (test-then-train) pipeline for Big Data streams.  |
 | **Backend API**      | FastAPI, Pydantic, Uvicorn                      | Asynchronous inference endpoints with deterministic feature engineering. |
 | **Frontend UI**      | React, Vite, TypeScript, Tailwind CSS           | Real-time monitoring dashboard and interactive transaction simulator.    |
-
-### Machine Learning Four-Model Architecture
-
-The system evaluates incoming transactions using a multi-layered defense strategy defined in the initial analysis and continuous learning pipelines:
-
-1. **Ensemble Model: Random Forest Classifier**
-   The champion ensemble model optimized via `GridSearchCV`. To handle the extreme class imbalance, it utilizes `imblearn.pipeline.Pipeline` to apply the Synthetic Minority Over-sampling Technique (SMOTE) with a sampling strategy of 1.0 strictly within the cross-validation training folds. It achieves the highest AUPRC (0.9986) on the initial test set. During continuous learning, it is updated iteratively using `warm_start=True` to append new decision trees.
-2. **Challenger Model: XGBoost Classifier**
-   A high-performance gradient boosting model utilized as a parallel evaluation engine. Like the Random Forest model, it relies on a SMOTE pipeline to artificially balance the fraud class during training, preventing the majority class from washing out the minority signal. It supports direct booster continuation (`xgb_model`) for incremental weight updates on new data chunks.
-3. **Baseline Model: Logistic Regression / SGDClassifier**
-   A linear model incorporating `class_weight='balanced'` used to establish a performance floor. In the continuous learning phase, it is transitioned to an `SGDClassifier` optimizing for `log_loss` to support `partial_fit` batch training.
-4. **Unsupervised Model: Isolation Forest**
-   An anomaly detection model trained exclusively on legitimate transactions. It acts as a static monitor to detect completely novel attack patterns that lack historical labels.
-
-## Data Engineering & Production-Grade Continuous Learning
-
-### The Canonical Feature Pipeline
-
-The pipeline relies on a strict, deterministic ETL function (`build_feature_matrix`) encapsulated via `pandas.pipe()`. This modular architecture guarantees 100% schema alignment between offline training and the Assignment 3 FastAPI production environment, outputting a highly optimized **12-column Feature Matrix**. Key engineering steps include:
-
-- **Data Leakage Prevention:** Post-transaction balances (`newbalanceOrig`, `newbalanceDest`) are dropped immediately. These act as future-state variables unavailable during real-time inference and would artificially inflate model accuracy.
-- **Multicollinearity Defense (Reference Category Encoding):** The `CASH_IN` transaction type is explicitly dropped during one-hot encoding to prevent the dummy variable trap and preserve matrix rank.
-- **Statistically Validated Ratios:** Contextual indicators such as `account_drain_ratio` and `amount_to_destination_ratio` are engineered to capture illicit behavioral signatures. These features were mathematically validated using Mann-Whitney U tests and Cliff's Delta effect sizes prior to modeling.
-- **Cyclical Time Encoding:** The linear 24-hour cycle is transformed using sine and cosine functions to accurately map temporal fraud patterns without creating artificial boundaries at midnight.
-- **Logarithmic Scaling:** Transaction amounts are compressed using `log1p` to normalize extreme monetary outliers, preventing the distortion of linear separation boundaries.
-
-### Production-Grade Prequential Evaluation (~16.5M Row Stress Test)
-
-To prove the architecture's resilience against massive data streams, the continuous learning pipeline processes five additional generated datasets in discrete ~3.4 million row chunks.
-
-- **Temporal Leakage Defense (Test-Then-Train):** To simulate a high-fidelity production environment, each incoming chunk is evaluated against the current model state _prior_ to any weight updates. This ensures that reported AUPRC and F1-Scores reflect true zero-day detection capabilities on unmanipulated distributions.
-- **Champion Model Evolution:** The pipeline strictly updates the two top-performing models: **XGBoost** (via sequential continuation) and **Random Forest** (utilizing `warm_start=True` to iteratively add 10 trees per chunk, balancing complexity with computational cost).
-- **Memory Optimization:** The Baseline Logistic Regression is adapted to an `SGDClassifier (loss='log_loss')`, utilizing `partial_fit()` to process massive streams without triggering Out-of-Memory (OOM) system crashes.
 
 ## Repository Structure
 
@@ -166,42 +139,87 @@ KAGGLE_KEY="your_actual_api_key"
 
 ```
 
-Once placed correctly, you can open and run `01_primary_analysis.ipynb` and `02_continuous_learning.ipynb` to download the datasets and serialize the models into the `backend/models/` directory.
+## Model Training
 
-Once placed correctly, you can open and run `01_primary_analysis.ipynb` to download the Kaggle dataset and initiate secure data ingestion and generate the foundational .pkl and .json model files in backend/models/. Run `02_continuous_learning.ipynb` to process the sequential datasets in ml_pipeline/data/ and generate the \_v2 artifacts.
+The models are trained using Jupyter Notebooks located in:
 
-### Step 4: Start the Application
+`ml_pipeline/notebooks/`
 
-**Method A: Automated Startup (Windows Only)**
-Run the batch script from the root directory to start both servers concurrently:
+### Step 1: Run Primary Training
 
-```cmd
-start_project.bat
+Open and execute:
+` 01_primary_analysis.ipynb`
 
-```
+This notebook:
 
-**Method B: Manual Startup**
-Open two separate terminal instances from the root directory.
+- Downloads the dataset
+- Performs data cleaning and preprocessing
+- Applies feature engineering
+- Trains 4 models: Logistic Regression, Random Forest, XGBoost, Isolation Forest
+- Evaluates performance using F1-score and AUPRC
 
-**Terminal 1 (Backend API):**
+### Step 2: Run Continuous Learning Pipeline
 
-```bash
-cd backend
-uvicorn app.main:app --reload
+` 02_continuous_learning.ipynb`
 
-```
+This notebook:
 
-The API is now active at `http://localhost:8000`.
+- Simulates real-world streaming data
+- Applies prequential evaluation (test-then-train)
+- Updates models incrementally
 
-**Terminal 2 (Frontend UI):**
+## Output
 
-```bash
-cd frontend
-npm run dev
+Trained models are saved in:
+``backend/trained_models/
 
-```
+Example files:
 
-The dashboard is now active at `http://localhost:8080`.
+`model_rf.pkl` → Random Forest
+
+`model_xgboost.pkl` → XGBoost
+
+`feature_columns.pkl` → Feature schema
+
+## Model Evaluation
+
+Due to extreme class imbalance (~0.13% fraud), traditional accuracy is not used. Instead, we use:
+
+- **F1-score**: balance of precision and recall
+- **AUPRC**: focuses on detecting rare fraud cases
+
+## Model Inference and Evaluation
+
+At this stage, predictions are generated within the machine learning notebooks during model evaluation and continuous learning experiments, rather than through a deployed API.
+
+The trained models take raw transaction attributes as input, apply the preprocessing and feature engineering pipeline, and then output a fraud classification and evaluation score during notebook execution.
+
+Prediction capability is currently demonstrated through:
+
+- cross-validation results in `01_primary_analysis.ipynb`
+
+- prequential evaluation in `02_continuous_learning.ipynb`
+
+A production prediction endpoint and web-based input form will be implemented in Assignment 3.
+
+## Prediction Flow (Current Implementation)
+
+At this stage, predictions are generated within the machine learning pipeline during notebook execution.
+
+1. Raw transaction data is loaded from the dataset
+2. Feature engineering is applied (`build_feature_matrix`)
+3. The trained model generates predictions
+4. Results are evaluated using F1-score and AUPRC
+
+Note: A real-time prediction API and user interface will be implemented in Assignment 3.
+
+## Continuous Learning (Prequential Evaluation)
+
+The system simulates real-world deployment using a **test-then-train** approach:
+
+- Each data chunk is evaluated before updating the model
+- Prevents temporal data leakage
+- Reflects real-world fraud detection performance
 
 ## Acknowledgments
 
