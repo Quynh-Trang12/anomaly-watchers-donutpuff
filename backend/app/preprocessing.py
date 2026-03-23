@@ -95,11 +95,11 @@ def encode_categoricals_and_drop_identifiers(df: pd.DataFrame) -> pd.DataFrame:
         if col not in df.columns:
             df[col] = 0
 
-    # Standardize column order
+    # Standardize column order. The target is included only for training data,
+    # and must be excluded for API inference payloads.
     expected_order = [
         "originator_old_balance",
         "destination_old_balance",
-        "is_fraud",
         "amount_to_destination_ratio",
         "account_drain_ratio",
         "log_transaction_amount",
@@ -111,9 +111,8 @@ def encode_categoricals_and_drop_identifiers(df: pd.DataFrame) -> pd.DataFrame:
         "is_type_transfer",
     ]
 
-    # If training data (has target), put it at the front. If API inference, ignore it.
     if "is_fraud" in df.columns:
-        expected_order.insert(0, "is_fraud")
+        expected_order = ["is_fraud", *expected_order]
 
     return df[expected_order]
 
@@ -138,7 +137,7 @@ def build_feature_matrix(df_raw: pd.DataFrame) -> pd.DataFrame:
     """
     Ingests raw PaySim data and outputs the hardened 12-feature matrix.
     """
-    return (df_raw.copy()
+    transformed = (df_raw.copy()
         .pipe(rename_to_snake_case)
         .pipe(drop_post_transaction_leaks)
         .pipe(engineer_financial_ratios)
@@ -146,5 +145,6 @@ def build_feature_matrix(df_raw: pd.DataFrame) -> pd.DataFrame:
         .pipe(apply_cyclical_time_encoding)
         .pipe(drop_redundant_raw_columns)
         .pipe(encode_categoricals_and_drop_identifiers)
-        .astype({k: v for k, v in DTYPE_MAP.items() if k in DTYPE_MAP})
     )
+
+    return transformed.astype({k: v for k, v in DTYPE_MAP.items() if k in transformed.columns})

@@ -226,7 +226,7 @@ export function TransactionForm() {
       );
 
       // --- AI INTEGRATION ---
-      // Call the Python Backend (FastAPI + XGBoost)
+      // Call the Python backend and map the model-centric response into the demo UX.
       console.log("Calling Backend API...");
       const apiResponse = await predictPrimary({
         step: step,
@@ -245,14 +245,18 @@ export function TransactionForm() {
       const riskLevel = apiResponse.risk_level;
 
       let decision: "APPROVE" | "STEP_UP" | "BLOCK" = "APPROVE";
-      if (riskScore > 80) decision = "BLOCK";
-      else if (riskScore > 40) decision = "STEP_UP";
+      if (riskLevel === "High") decision = "BLOCK";
+      else if (riskLevel === "Medium") decision = "STEP_UP";
 
       // Create Reasons List — use structured XAI factors from the backend
       const modelReasons = [
         `AI Risk Probability: ${riskScore}%`,
         `Risk Level: ${riskLevel}`,
       ];
+
+      if (apiResponse.explanation) {
+        modelReasons.push(apiResponse.explanation);
+      }
 
       // Append structured risk factors from the backend XAI engine
       if (apiResponse.risk_factors && apiResponse.risk_factors.length > 0) {
@@ -280,6 +284,10 @@ export function TransactionForm() {
         riskScore: riskScore,
         decision: decision,
         reasons: modelReasons,
+        backendRiskLevel: riskLevel,
+        backendExplanation: apiResponse.explanation,
+        modelScores: apiResponse.model_scores,
+        modelsUsed: apiResponse.models_used,
         createdAt: new Date().toISOString(),
       };
 

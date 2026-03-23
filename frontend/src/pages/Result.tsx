@@ -304,6 +304,74 @@ export default function Result() {
             </div>
           )}
 
+          {!showOTP &&
+            (transaction.backendExplanation ||
+              transaction.backendRiskLevel ||
+              transaction.modelsUsed?.length ||
+              (transaction.modelScores &&
+                Object.keys(transaction.modelScores).length > 0)) && (
+              <div className="section-card">
+                <h2 className="font-semibold mb-4">Model Output</h2>
+                <div className="space-y-4 text-sm">
+                  {transaction.backendExplanation && (
+                    <p className="text-muted-foreground leading-6">
+                      {transaction.backendExplanation}
+                    </p>
+                  )}
+
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    {transaction.backendRiskLevel && (
+                      <div className="rounded-lg bg-muted/30 p-3">
+                        <div className="text-xs uppercase tracking-wide text-muted-foreground">
+                          Backend Risk Level
+                        </div>
+                        <div className="mt-1 font-medium">
+                          {transaction.backendRiskLevel}
+                        </div>
+                      </div>
+                    )}
+
+                    {transaction.modelsUsed && transaction.modelsUsed.length > 0 && (
+                      <div className="rounded-lg bg-muted/30 p-3">
+                        <div className="text-xs uppercase tracking-wide text-muted-foreground">
+                          Models Used
+                        </div>
+                        <div className="mt-1 font-medium">
+                          {transaction.modelsUsed.join(", ")}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+
+                  {transaction.modelScores &&
+                    Object.keys(transaction.modelScores).length > 0 && (
+                      <div className="space-y-2">
+                        <h3 className="text-xs uppercase tracking-wide text-muted-foreground">
+                          Model Scores
+                        </h3>
+                        <div className="grid gap-2 sm:grid-cols-2">
+                          {Object.entries(transaction.modelScores).map(
+                            ([name, score]) => (
+                              <div
+                                key={name}
+                                className="rounded-lg bg-muted/30 p-3"
+                              >
+                                <div className="text-xs uppercase tracking-wide text-muted-foreground">
+                                  {name}
+                                </div>
+                                <div className="mt-1 font-medium">
+                                  {(score * 100).toFixed(1)}%
+                                </div>
+                              </div>
+                            ),
+                          )}
+                        </div>
+                      </div>
+                    )}
+                </div>
+              </div>
+            )}
+
           {/* Explainability Section */}
           {!showOTP && explanations.length > 0 && (
             <div className="section-card">

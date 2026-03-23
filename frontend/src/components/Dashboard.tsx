@@ -110,10 +110,10 @@ const Dashboard: React.FC = () => {
     const isFraudBurst = now % FRAUD_BURST_WINDOW_MS < FRAUD_BURST_DURATION_MS;
 
     if (isFraudBurst && Math.random() > 0.3) {
-      // Fraud-like transaction: CASH_OUT draining account
+      // Fraud-like transaction: CASH OUT draining account
       return {
         step: 1,
-        type: "CASH_OUT",
+        type: "CASH OUT",
         amount: 90_000 + Math.random() * 50_000,
         oldbalanceOrg: 90_000 + Math.random() * 50_000,
         newbalanceOrig: 0,

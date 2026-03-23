@@ -18,6 +18,10 @@ export interface Transaction {
   riskScore: number;
   decision: Decision;
   reasons: string[];
+  backendRiskLevel?: "Low" | "Medium" | "High";
+  backendExplanation?: string;
+  modelScores?: Record<string, number>;
+  modelsUsed?: string[];
   createdAt: string;
 }
 

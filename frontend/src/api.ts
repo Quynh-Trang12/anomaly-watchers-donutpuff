@@ -46,6 +46,8 @@ export interface PredictionOutput {
   risk_level: "Low" | "Medium" | "High";
   explanation?: string;
   risk_factors: RiskFactor[];
+  models_used?: string[];
+  model_scores?: Record<string, number>;
 }
 
 // ---------------------------------------------------------------------------
@@ -68,7 +70,8 @@ export const predictSecondary = async (
 export const healthCheck = async (): Promise<{
   status: string;
   models_loaded: string[];
+  feature_count?: number;
 }> => {
-  const response = await axios.get(`${API_URL}/`);
+  const response = await axios.get(`${API_URL}/health`);
   return response.data;
 };
