@@ -27,8 +27,7 @@ logger = logging.getLogger("anomaly_watchers.api")
 MODEL_DIR = Path(__file__).resolve().parents[1] / "trained_models"
 
 MODEL_CANDIDATES = {
-    "random_forest": ["model_rf_v2.pkl", "model_rf.pkl"],
-    "xgboost": ["model_xgboost_v2.pkl", "model_xgboost.pkl"],
+    "random_forest": ["model_rf_v2.pkl"],
     "feature_columns": ["feature_columns.pkl"],
 }
 
@@ -200,7 +199,7 @@ async def lifespan(app: FastAPI):
 
     logger.info(
         "Backend ready with models: %s",
-        [key for key in ("random_forest", "xgboost") if key in model_registry],
+        [key for key in ("random_forest",) if key in model_registry],
     )
     yield
     model_registry.clear()
@@ -230,7 +229,7 @@ app.add_middleware(
 @app.get("/", response_model=HealthResponse)
 async def root_health() -> HealthResponse:
     loaded_models = [
-        key for key in ("random_forest", "xgboost") if key in model_registry
+        key for key in ("random_forest",) if key in model_registry
     ]
 
     return HealthResponse(
@@ -249,7 +248,7 @@ async def health_check() -> HealthResponse:
 async def predict_primary(payload: TransactionInput) -> PredictionOutput:
     available_models = {
         key: model_registry[key]
-        for key in ("random_forest", "xgboost")
+        for key in ("random_forest",)
         if key in model_registry
     }
 
@@ -297,7 +296,7 @@ async def predict_primary(payload: TransactionInput) -> PredictionOutput:
             detail="Models were found, but none returned a usable probability.",
         )
 
-    probability = float(np.mean(list(scores.values())))
+    probability = float(scores["random_forest"])
     risk_level = _risk_level(probability)
     risk_factors = _build_risk_factors(payload, scores)
 

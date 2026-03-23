@@ -304,7 +304,7 @@ export default function Result() {
             </div>
           )}
 
-          {!showOTP &&
+          {/* {!showOTP &&
             (transaction.backendExplanation ||
               transaction.backendRiskLevel ||
               transaction.modelsUsed?.length ||
@@ -370,7 +370,7 @@ export default function Result() {
                     )}
                 </div>
               </div>
-            )}
+            )} */}
 
           {/* Explainability Section */}
           {!showOTP && explanations.length > 0 && (
