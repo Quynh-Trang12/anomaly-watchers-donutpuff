@@ -19,7 +19,7 @@ export const TRANSACTION_PRESETS: TransactionPreset[] = [
     expectedOutcome: "APPROVE",
     type: "PAYMENT",
     amount: 5000,
-    originAccountIndex: 1, // Account with 150000 balance
+    originAccountIndex: 1, // Account with 120000 balance
   },
   {
     id: "large_transfer",
@@ -28,8 +28,8 @@ export const TRANSACTION_PRESETS: TransactionPreset[] = [
       "Transfer that drains most of the balance - requires verification",
     expectedOutcome: "STEP_UP",
     type: "TRANSFER",
-    amount: 140000,
-    originAccountIndex: 1, // Account with 150000 balance
+    amount: 115000,
+    originAccountIndex: 1, // Account with 120000 balance
   },
   {
     id: "suspicious_cashout",
@@ -37,8 +37,8 @@ export const TRANSACTION_PRESETS: TransactionPreset[] = [
     description: "Total liquidation of account balance - should be blocked",
     expectedOutcome: "BLOCK",
     type: "CASH OUT",
-    amount: 25000,
-    originAccountIndex: 3, // Account with 25000 balance -> Result 0
+    amount: 18000,
+    originAccountIndex: 3, // Account with 18000 balance -> Result 0
   },
   {
     id: "large_cashin",
@@ -47,7 +47,7 @@ export const TRANSACTION_PRESETS: TransactionPreset[] = [
     expectedOutcome: "STEP_UP",
     type: "CASH IN",
     amount: 180000,
-    originAccountIndex: 4, // Account with 0 balance
+    originAccountIndex: 4, // New account starting at 0 balance
   },
   {
     id: "small_debit",

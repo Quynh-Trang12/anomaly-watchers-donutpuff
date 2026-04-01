@@ -2,25 +2,30 @@ import { Link, useLocation } from "react-router-dom";
 import { Shield, Menu, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useState } from "react";
+import { getCurrentRole } from "@/lib/auth";
 
-const navLinks = [
+const BASE_NAV_LINKS = [
   { to: "/", label: "Home" },
   { to: "/dashboard", label: "Live Dashboard" },
   { to: "/simulate", label: "Simulator" },
   { to: "/history", label: "History" },
-  { to: "/admin", label: "Admin" },
 ];
 
 export function Header() {
   const location = useLocation();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const role = getCurrentRole();
+
+  const navLinks =
+    role === "admin"
+      ? [...BASE_NAV_LINKS, { to: "/admin", label: "Admin" }]
+      : BASE_NAV_LINKS;
 
   return (
     <header className="sticky top-0 z-50 bg-card border-b border-border">
-      {/* Disclaimer banner */}
       <div className="disclaimer-banner" role="alert">
         <span className="sr-only">Important notice: </span>
-        ⚠️ Simulation only. No real transfers occur.
+        Simulation only. No real transfers occur.
       </div>
 
       <nav className="container flex items-center justify-between h-14 sm:h-16">
@@ -36,7 +41,6 @@ export function Header() {
           <span className="sm:hidden text-sm">AW</span>
         </Link>
 
-        {/* Desktop navigation */}
         <ul className="hidden md:flex items-center gap-1" role="list">
           {navLinks.map((link) => (
             <li key={link.to}>
@@ -57,7 +61,15 @@ export function Header() {
           ))}
         </ul>
 
-        {/* Mobile menu button */}
+        <div className="hidden md:flex items-center gap-2">
+          <span className="text-xs px-2 py-1 rounded bg-muted text-muted-foreground uppercase">
+            Role: {role}
+          </span>
+          <Button asChild size="sm" variant="outline">
+            <Link to="/login">Switch Role</Link>
+          </Button>
+        </div>
+
         <Button
           variant="ghost"
           size="sm"
@@ -75,7 +87,6 @@ export function Header() {
         </Button>
       </nav>
 
-      {/* Mobile navigation */}
       {mobileMenuOpen && (
         <nav
           id="mobile-menu"
@@ -83,6 +94,9 @@ export function Header() {
           aria-label="Mobile navigation"
         >
           <ul className="container py-2 space-y-1" role="list">
+            <li className="px-3 pt-2 pb-1 text-xs text-muted-foreground uppercase">
+              Role: {role}
+            </li>
             {navLinks.map((link) => (
               <li key={link.to}>
                 <Link
@@ -101,9 +115,19 @@ export function Header() {
                 </Link>
               </li>
             ))}
+            <li>
+              <Link
+                to="/login"
+                className="block px-3 py-2 rounded-md text-sm font-medium text-muted-foreground hover:text-foreground hover:bg-muted"
+                onClick={() => setMobileMenuOpen(false)}
+              >
+                Switch Role
+              </Link>
+            </li>
           </ul>
         </nav>
       )}
     </header>
   );
 }
+

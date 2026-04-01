@@ -6,7 +6,7 @@ import { RiskScore } from "@/components/ui/RiskScore";
 import { getEventTypeLabel, formatCurrency } from "@/lib/eventTypes";
 import { CheckCircle, XCircle, AlertTriangle, Lightbulb } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
-import { updateTransaction, getTransactions } from "@/lib/storage";
+import { updateTransaction } from "@/lib/storage";
 
 interface ReviewQueueProps {
   transactions: Transaction[];
@@ -19,7 +19,7 @@ export function ReviewQueue({ transactions, onUpdate }: ReviewQueueProps) {
   // Filter for grey zone (risk 40-80%) OR unverified status
   const reviewQueue = useMemo(() => {
     return transactions.filter(t => {
-      const isGreyZone = t.riskScore >= 0.4 && t.riskScore <= 0.8;
+      const isGreyZone = t.riskScore >= 40 && t.riskScore <= 80;
       const isUnverified = t.isFraud !== 0 && t.isFraud !== 1;
       return isGreyZone || isUnverified;
     });
@@ -51,8 +51,9 @@ export function ReviewQueue({ transactions, onUpdate }: ReviewQueueProps) {
         <div className="space-y-1">
           <p className="font-medium text-primary">Human-in-the-Loop Review</p>
           <p className="text-sm text-muted-foreground">
-            Review suspicious transactions to improve the AI model's accuracy. 
-            Your feedback creates the ground truth for future training.
+            Review suspicious transactions to support Random Forest model
+            evaluation and threshold tuning. Your feedback creates the ground
+            truth for future training and review.
           </p>
         </div>
       </div>
@@ -66,7 +67,7 @@ export function ReviewQueue({ transactions, onUpdate }: ReviewQueueProps) {
           </span>
         </div>
         <span className="text-muted-foreground">
-          (Risk 40–80% or Unverified)
+          (Risk 40-80% or unverified)
         </span>
       </div>
 
@@ -140,3 +141,4 @@ export function ReviewQueue({ transactions, onUpdate }: ReviewQueueProps) {
     </div>
   );
 }
+

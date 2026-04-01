@@ -16,7 +16,12 @@ import {
   PieChart,
   Pie,
 } from "recharts";
-import { predictPrimary, TransactionInput, PredictionOutput } from "../api";
+import {
+  predictPrimary,
+  TransactionInput,
+  PredictionOutput,
+  healthCheck,
+} from "../api";
 import {
   AlertTriangle,
   ShieldCheck,
@@ -69,6 +74,8 @@ interface Stats {
   total: number;
 }
 
+type BackendStatus = "checking" | "online" | "degraded" | "offline";
+
 // ---------------------------------------------------------------------------
 // Component: Stat Card with motion
 // ---------------------------------------------------------------------------
@@ -103,6 +110,8 @@ const Dashboard: React.FC = () => {
   const [isSimulating, setIsSimulating] = useState(false);
   const [currentRisk, setCurrentRisk] = useState(0);
   const [lastResult, setLastResult] = useState<PredictionOutput | null>(null);
+  const [streamError, setStreamError] = useState<string | null>(null);
+  const [backendStatus, setBackendStatus] = useState<BackendStatus>("checking");
 
   // Generate a realistic fake transaction
   const generateTransaction = useCallback((): TransactionInput => {
@@ -134,6 +143,30 @@ const Dashboard: React.FC = () => {
     };
   }, []);
 
+  // Lightweight backend health polling for operator visibility
+  useEffect(() => {
+    let isMounted = true;
+
+    const refreshHealth = async () => {
+      try {
+        const health = await healthCheck();
+        if (!isMounted) return;
+        setBackendStatus(health.status === "ok" ? "online" : "degraded");
+      } catch {
+        if (!isMounted) return;
+        setBackendStatus("offline");
+      }
+    };
+
+    refreshHealth();
+    const timer = setInterval(refreshHealth, 30000);
+
+    return () => {
+      isMounted = false;
+      clearInterval(timer);
+    };
+  }, []);
+
   // Simulation loop
   useEffect(() => {
     let interval: ReturnType<typeof setInterval>;
@@ -144,6 +177,7 @@ const Dashboard: React.FC = () => {
 
         try {
           const result = await predictPrimary(fakeInput);
+          setStreamError(null);
           setLastResult(result);
 
           setStats((prev) => ({
@@ -168,6 +202,10 @@ const Dashboard: React.FC = () => {
           });
         } catch (e) {
           console.error("Simulation error:", e);
+          setStreamError(
+            "No response from AI backend. Start backend server at http://127.0.0.1:8000 and run the stream again.",
+          );
+          setIsSimulating(false);
         }
       }, SIMULATION_INTERVAL_MS);
     }
@@ -193,6 +231,20 @@ const Dashboard: React.FC = () => {
         ? "text-warning"
         : "text-success";
 
+  const backendStatusBadgeClass = {
+    checking: "bg-muted text-muted-foreground",
+    online: "bg-success-muted text-success",
+    degraded: "bg-warning-muted text-warning",
+    offline: "bg-danger-muted text-danger",
+  }[backendStatus];
+
+  const backendStatusLabel = {
+    checking: "Backend: Checking",
+    online: "Backend: Online",
+    degraded: "Backend: Degraded",
+    offline: "Backend: Offline",
+  }[backendStatus];
+
   return (
     <Layout>
       <div className="container py-6 sm:py-8 space-y-8">
@@ -208,11 +260,18 @@ const Dashboard: React.FC = () => {
               Live Risk Monitor
             </h1>
             <p className="text-muted-foreground mt-1">
-              Real-time fraud detection stream — XGBoost + Heuristic Engine
+              {
+                "Real-time model scoring on a synthetic demo stream \u2014 Random Forest primary model"
+              }
             </p>
           </div>
 
-          <div className="flex items-center gap-4 bg-card p-2 rounded-lg border border-border shadow-sm">
+          <div className="flex items-center gap-3 bg-card p-2 rounded-lg border border-border shadow-sm">
+            <span
+              className={`px-3 py-1 rounded-full text-sm font-medium ${backendStatusBadgeClass}`}
+            >
+              {backendStatusLabel}
+            </span>
             <AnimatePresence mode="wait">
               <motion.span
                 key={isSimulating ? "active" : "standby"}
@@ -230,7 +289,10 @@ const Dashboard: React.FC = () => {
             </AnimatePresence>
 
             <Button
-              onClick={() => setIsSimulating(!isSimulating)}
+              onClick={() => {
+                if (!isSimulating) setStreamError(null);
+                setIsSimulating(!isSimulating);
+              }}
               variant={isSimulating ? "destructive" : "default"}
               className="gap-2"
             >
@@ -246,6 +308,12 @@ const Dashboard: React.FC = () => {
             </Button>
           </div>
         </motion.div>
+
+        {streamError && (
+          <div className="rounded-lg border border-danger/30 bg-danger/10 px-4 py-3 text-sm text-danger">
+            {streamError}
+          </div>
+        )}
 
         {/* Stats Cards */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
@@ -311,7 +379,7 @@ const Dashboard: React.FC = () => {
                 Live Fraud Probability
               </h2>
               <p className="text-sm text-muted-foreground">
-                Real-time probability stream of incoming transactions
+                Real-time probability stream of synthetic demo transactions
               </p>
             </div>
             <div className="h-[300px] w-full">
@@ -530,9 +598,11 @@ const Dashboard: React.FC = () => {
                   animate={{ opacity: 1 }}
                   className="text-sm text-muted-foreground text-center py-12"
                 >
-                  {isSimulating
-                    ? "Waiting for data..."
-                    : "Start the stream to see live XAI output"}
+                  {streamError
+                    ? "Backend is offline. Start the backend server, then click Start Stream."
+                    : isSimulating
+                      ? "Waiting for data..."
+                      : "Start the stream to see live XAI output"}
                 </motion.p>
               )}
             </AnimatePresence>

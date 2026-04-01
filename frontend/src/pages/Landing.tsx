@@ -25,7 +25,7 @@ const howItWorks = [
     step: 2,
     icon: Brain,
     title: "AI Analysis",
-    description: "Our engine evaluates risk in milliseconds using behavioral anomaly detection.",
+    description: "Our Random Forest primary model evaluates transaction risk in milliseconds, supported by risk rules for clear edge cases.",
   },
   {
     step: 3,
@@ -97,8 +97,9 @@ export default function Landing() {
               
               {/* Subheadline */}
               <p className="text-lg text-muted-foreground mt-4 leading-relaxed max-w-xl">
-                Experience the power of real-time anomaly detection. Simulate payment flows 
-                and evaluate risk with our advanced machine learning engine.
+                Experience real-time fraud monitoring built around a deployed
+                Random Forest primary model. Simulate payment flows and review
+                risk decisions in a clean, demo-ready workflow.
               </p>
 
               {/* CTA */}

@@ -13,8 +13,9 @@ export function SimulatorHelpCallout() {
         </p>
         <p className="text-sm text-muted-foreground">
           You are simulating a transaction as a customer. Fill in the details
-          below and our AI-powered fraud detection system will analyze the
-          transaction in real-time using machine learning models.
+          below and our fraud monitoring workflow will analyze the transaction
+          in real-time using the deployed Random Forest primary model with
+          supporting risk rules.
         </p>
       </div>
     </div>

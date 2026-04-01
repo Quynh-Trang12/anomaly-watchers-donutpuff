@@ -11,9 +11,9 @@ export default function Simulate() {
               Risk Analysis Workbench
             </h1>
             <p className="text-sm sm:text-base text-muted-foreground">
-              Simulate a financial transaction to test the Fraud Detection
-              Engine. Configure the sender, recipient, and time context to
-              observe how the AI assesses risk.
+              Simulate a financial transaction to test the deployed fraud
+              detection flow. Configure the sender, recipient, and time context
+              to observe how the Random Forest primary model assesses risk.
             </p>
           </header>
 

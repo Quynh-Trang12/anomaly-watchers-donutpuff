@@ -7,7 +7,7 @@ import axios from "axios";
  * so we use a relative base URL (empty string).
  */
 
-const API_URL = "";
+const API_URL = import.meta.env.DEV ? "http://127.0.0.1:8000" : "";
 
 // ---------------------------------------------------------------------------
 // Request DTOs
@@ -61,10 +61,11 @@ export const predictPrimary = async (
 };
 
 export const predictSecondary = async (
-  data: CreditCardInput,
+  _data: CreditCardInput,
 ): Promise<PredictionOutput> => {
-  const response = await axios.post(`${API_URL}/predict/secondary`, data);
-  return response.data;
+  throw new Error(
+    "Secondary model endpoint is not deployed in this build. Use the primary Random Forest flow.",
+  );
 };
 
 export const healthCheck = async (): Promise<{
@@ -72,6 +73,6 @@ export const healthCheck = async (): Promise<{
   models_loaded: string[];
   feature_count?: number;
 }> => {
-  const response = await axios.get(`${API_URL}/health`);
+  const response = await axios.get(`${API_URL}/health`, { timeout: 4000 });
   return response.data;
 };

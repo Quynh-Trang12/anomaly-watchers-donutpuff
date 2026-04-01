@@ -29,6 +29,8 @@ import {
   ArrowRight,
 } from "lucide-react";
 
+const OTP_CANCEL_REASON = "OTP verification was cancelled";
+
 // Generate human-readable explanations for risk factors
 function generateExplainability(
   transaction: Transaction,
@@ -166,7 +168,7 @@ function generateExplainability(
   if (filteredExplanations.length === 0) {
     filteredExplanations.push({
       icon: AlertCircle,
-      text: "AI model detected potential anomalies in the transaction pattern.",
+      text: "The deployed Random Forest model detected potential anomalies in the transaction pattern.",
       severity: "warning",
     });
   }
@@ -216,6 +218,30 @@ export default function Result() {
     setFinalDecision(newDecision);
     setShowOTP(false);
     updateTransaction(transaction.id, { decision: newDecision });
+  };
+
+  const handleOTPCancel = () => {
+    if (!transaction) return;
+    const newDecision: Decision = "BLOCK";
+    const reasons = transaction.reasons.includes(OTP_CANCEL_REASON)
+      ? transaction.reasons
+      : [...transaction.reasons, OTP_CANCEL_REASON];
+
+    setTransaction({
+      ...transaction,
+      decision: newDecision,
+      isFraud: 1,
+      riskScore: 100,
+      reasons,
+    });
+    setFinalDecision(newDecision);
+    setShowOTP(false);
+    updateTransaction(transaction.id, {
+      decision: newDecision,
+      isFraud: 1,
+      riskScore: 100,
+      reasons,
+    });
   };
 
   if (!transaction) {
@@ -275,6 +301,7 @@ export default function Result() {
               <OTPChallenge
                 onSuccess={handleOTPSuccess}
                 onFail={handleOTPFail}
+                onCancel={handleOTPCancel}
               />
             </div>
           )}
@@ -303,74 +330,6 @@ export default function Result() {
               </div>
             </div>
           )}
-
-          {!showOTP &&
-            (transaction.backendExplanation ||
-              transaction.backendRiskLevel ||
-              transaction.modelsUsed?.length ||
-              (transaction.modelScores &&
-                Object.keys(transaction.modelScores).length > 0)) && (
-              <div className="section-card">
-                <h2 className="font-semibold mb-4">Model Output</h2>
-                <div className="space-y-4 text-sm">
-                  {transaction.backendExplanation && (
-                    <p className="text-muted-foreground leading-6">
-                      {transaction.backendExplanation}
-                    </p>
-                  )}
-
-                  <div className="grid gap-3 sm:grid-cols-2">
-                    {transaction.backendRiskLevel && (
-                      <div className="rounded-lg bg-muted/30 p-3">
-                        <div className="text-xs uppercase tracking-wide text-muted-foreground">
-                          Backend Risk Level
-                        </div>
-                        <div className="mt-1 font-medium">
-                          {transaction.backendRiskLevel}
-                        </div>
-                      </div>
-                    )}
-
-                    {transaction.modelsUsed && transaction.modelsUsed.length > 0 && (
-                      <div className="rounded-lg bg-muted/30 p-3">
-                        <div className="text-xs uppercase tracking-wide text-muted-foreground">
-                          Models Used
-                        </div>
-                        <div className="mt-1 font-medium">
-                          {transaction.modelsUsed.join(", ")}
-                        </div>
-                      </div>
-                    )}
-                  </div>
-
-                  {transaction.modelScores &&
-                    Object.keys(transaction.modelScores).length > 0 && (
-                      <div className="space-y-2">
-                        <h3 className="text-xs uppercase tracking-wide text-muted-foreground">
-                          Model Scores
-                        </h3>
-                        <div className="grid gap-2 sm:grid-cols-2">
-                          {Object.entries(transaction.modelScores).map(
-                            ([name, score]) => (
-                              <div
-                                key={name}
-                                className="rounded-lg bg-muted/30 p-3"
-                              >
-                                <div className="text-xs uppercase tracking-wide text-muted-foreground">
-                                  {name}
-                                </div>
-                                <div className="mt-1 font-medium">
-                                  {(score * 100).toFixed(1)}%
-                                </div>
-                              </div>
-                            ),
-                          )}
-                        </div>
-                      </div>
-                    )}
-                </div>
-              </div>
-            )}
 
           {/* Explainability Section */}
           {!showOTP && explanations.length > 0 && (

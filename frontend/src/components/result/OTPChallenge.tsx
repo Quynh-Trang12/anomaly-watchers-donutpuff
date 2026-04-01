@@ -7,12 +7,13 @@ import { Shield, Clock, CheckCircle, XCircle } from "lucide-react";
 interface OTPChallengeProps {
   onSuccess: () => void;
   onFail: () => void;
+  onCancel: () => void;
 }
 
 const TIMER_SECONDS = 60;
 const DEMO_OTP = "123456";
 
-export function OTPChallenge({ onSuccess, onFail }: OTPChallengeProps) {
+export function OTPChallenge({ onSuccess, onFail, onCancel }: OTPChallengeProps) {
   const [otp, setOtp] = useState("");
   const [timeLeft, setTimeLeft] = useState(TIMER_SECONDS);
   const [status, setStatus] = useState<"pending" | "success" | "failed">("pending");
@@ -73,6 +74,11 @@ export function OTPChallenge({ onSuccess, onFail }: OTPChallengeProps) {
     }
   };
 
+  const handleCancel = () => {
+    if (timerRef.current) clearInterval(timerRef.current);
+    onCancel();
+  };
+
   const formatTime = (seconds: number) => {
     const mins = Math.floor(seconds / 60);
     const secs = seconds % 60;
@@ -87,7 +93,7 @@ export function OTPChallenge({ onSuccess, onFail }: OTPChallengeProps) {
         </div>
         <h3 className="text-lg font-semibold text-success">Verification Successful</h3>
         <p className="text-sm text-muted-foreground">
-          Your identity has been verified. Transaction approved.
+          Demo verification successful. Transaction approved in simulator mode.
         </p>
       </div>
     );
@@ -101,7 +107,7 @@ export function OTPChallenge({ onSuccess, onFail }: OTPChallengeProps) {
         </div>
         <h3 className="text-lg font-semibold text-danger">Verification Failed</h3>
         <p className="text-sm text-muted-foreground">
-          {timeLeft === 0 ? "Time expired." : "Too many failed attempts."} Transaction blocked.
+          {timeLeft === 0 ? "Time expired." : "Too many failed attempts."} Transaction blocked in simulator mode.
         </p>
       </div>
     );
@@ -112,13 +118,20 @@ export function OTPChallenge({ onSuccess, onFail }: OTPChallengeProps) {
       {/* Screen reader announcer */}
       <div ref={announcerRef} className="sr-only" aria-live="polite" aria-atomic="true" />
 
+      <div
+        className="rounded-lg border border-warning/30 bg-warning-muted p-3 text-sm text-warning"
+        role="alert"
+      >
+        Warning: This transaction requires OTP verification before it can proceed.
+      </div>
+
       <div className="text-center space-y-2">
         <div className="inline-flex items-center justify-center w-12 h-12 rounded-full bg-warning-muted mb-2">
           <Shield className="h-6 w-6 text-warning" aria-hidden="true" />
         </div>
-        <h3 className="text-lg font-semibold">Step-Up Verification Required</h3>
+        <h3 className="text-lg font-semibold">OTP Verification Required</h3>
         <p className="text-sm text-muted-foreground">
-          Enter the 6-digit code to verify this transaction
+          Demo OTP code shown for simulator verification.
         </p>
       </div>
 
@@ -164,13 +177,22 @@ export function OTPChallenge({ onSuccess, onFail }: OTPChallengeProps) {
         </p>
       </div>
 
-      <Button
-        onClick={handleVerify}
-        disabled={otp.length !== 6}
-        className="w-full"
-      >
-        Verify
-      </Button>
+      <div className="grid grid-cols-2 gap-3">
+        <Button
+          type="button"
+          variant="outline"
+          onClick={handleCancel}
+        >
+          Cancel
+        </Button>
+        <Button
+          type="button"
+          onClick={handleVerify}
+          disabled={otp.length !== 6}
+        >
+          Verify
+        </Button>
+      </div>
     </div>
   );
 }

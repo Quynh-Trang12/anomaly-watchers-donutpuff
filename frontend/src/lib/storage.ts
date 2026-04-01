@@ -14,9 +14,23 @@ const STORAGE_KEYS = {
   ADMIN_AUDIT_LOG: "fraud_sim_audit_log",
   DESTINATION_BALANCES: "fraud_sim_dest_balances",
   ORIGIN_ACCOUNTS: "fraud_sim_origin_accounts",
+  ORIGIN_ACCOUNTS_SEED_VERSION: "fraud_sim_origin_accounts_seed_version",
   LAST_STEP: "fraud_sim_last_step",
   PENDING_TRANSACTION: "fraud_sim_pending_transaction",
 };
+
+const ORIGIN_ACCOUNTS_SEED_VERSION = "4";
+
+function persistOriginAccounts(accounts: OriginAccount[]): void {
+  localStorage.setItem(
+    STORAGE_KEYS.ORIGIN_ACCOUNTS,
+    JSON.stringify(accounts),
+  );
+  localStorage.setItem(
+    STORAGE_KEYS.ORIGIN_ACCOUNTS_SEED_VERSION,
+    ORIGIN_ACCOUNTS_SEED_VERSION,
+  );
+}
 
 // Transactions
 export function getTransactions(): Transaction[] {
@@ -116,22 +130,39 @@ export function updateDestinationBalance(
 export function getOriginAccounts(): OriginAccount[] {
   try {
     const data = localStorage.getItem(STORAGE_KEYS.ORIGIN_ACCOUNTS);
-    if (!data) return DEFAULT_ORIGIN_ACCOUNTS;
+    const seedVersion = localStorage.getItem(
+      STORAGE_KEYS.ORIGIN_ACCOUNTS_SEED_VERSION,
+    );
+
+    if (!data || seedVersion !== ORIGIN_ACCOUNTS_SEED_VERSION) {
+      persistOriginAccounts(DEFAULT_ORIGIN_ACCOUNTS);
+      return DEFAULT_ORIGIN_ACCOUNTS;
+    }
 
     const storedAccounts = JSON.parse(data) as OriginAccount[];
 
-    // Merge with defaults to ensure displayName exists (migration for old data)
-    return storedAccounts.map((account) => {
-      const defaultAccount = DEFAULT_ORIGIN_ACCOUNTS.find(
-        (d) => d.id === account.id,
+    const normalizedAccounts = DEFAULT_ORIGIN_ACCOUNTS.map((defaultAccount) => {
+      const storedAccount = storedAccounts.find(
+        (account) => account.id === defaultAccount.id,
       );
+
+      if (!storedAccount) {
+        return defaultAccount;
+      }
+
       return {
-        ...account,
+        ...storedAccount,
         displayName:
-          account.displayName || defaultAccount?.displayName || account.name,
-        name: account.name || defaultAccount?.name || account.id,
+          storedAccount.displayName || defaultAccount.displayName,
+        name: storedAccount.name || defaultAccount.name,
+        balance:
+          typeof storedAccount.balance === "number"
+            ? storedAccount.balance
+            : defaultAccount.balance,
       };
     });
+
+    return normalizedAccounts;
   } catch {
     return DEFAULT_ORIGIN_ACCOUNTS;
   }
@@ -142,10 +173,7 @@ export function updateOriginAccount(id: string, balance: number): void {
   const index = accounts.findIndex((a) => a.id === id);
   if (index !== -1) {
     accounts[index].balance = balance;
-    localStorage.setItem(
-      STORAGE_KEYS.ORIGIN_ACCOUNTS,
-      JSON.stringify(accounts),
-    );
+    persistOriginAccounts(accounts);
   }
 }
 

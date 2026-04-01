@@ -75,8 +75,8 @@ export const TRANSACTION_TYPES: { value: TransactionType; label: string; descrip
 
 export const DEFAULT_ORIGIN_ACCOUNTS: OriginAccount[] = [
   { id: "C1234567890", name: "C1234567890", displayName: "Primary Checking", balance: 50000 },
-  { id: "C2345678901", name: "C2345678901", displayName: "Business Account", balance: 150000 },
+  { id: "C2345678901", name: "C2345678901", displayName: "Business Account", balance: 120000 },
   { id: "C3456789012", name: "C3456789012", displayName: "Premium Savings", balance: 500000 },
-  { id: "C4567890123", name: "C4567890123", displayName: "Personal Savings", balance: 25000 },
+  { id: "C4567890123", name: "C4567890123", displayName: "Personal Savings", balance: 18000 },
   { id: "C5678901234", name: "C5678901234", displayName: "New Account", balance: 0 },
 ];

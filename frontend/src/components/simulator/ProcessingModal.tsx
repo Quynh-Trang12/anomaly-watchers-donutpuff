@@ -22,8 +22,8 @@ const PIPELINE_STEPS: PipelineStep[] = [
     duration: 800,
   },
   {
-    id: "xgboost",
-    label: "Running XGBoost Model...",
+    id: "model",
+    label: "Running Model...",
     icon: Cpu,
     duration: 800,
   },

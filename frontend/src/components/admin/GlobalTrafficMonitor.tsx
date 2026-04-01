@@ -25,7 +25,7 @@ export function GlobalTrafficMonitor({ transactions }: GlobalTrafficMonitorProps
     return transactions.filter(t => {
       if (typeFilter !== "ALL" && t.type !== typeFilter) return false;
       if (decisionFilter !== "ALL" && t.decision !== decisionFilter) return false;
-      if (highRiskOnly && t.riskScore < 0.7) return false;
+      if (highRiskOnly && t.riskScore < 70) return false;
       return true;
     });
   }, [transactions, typeFilter, decisionFilter, highRiskOnly]);
@@ -103,7 +103,7 @@ export function GlobalTrafficMonitor({ transactions }: GlobalTrafficMonitorProps
               onClick={() => setHighRiskOnly(!highRiskOnly)}
               aria-pressed={highRiskOnly}
             >
-              {highRiskOnly ? "✓ Risk ≥ 70%" : "Risk ≥ 70%"}
+              {highRiskOnly ? "Yes: Risk >= 70%" : "Risk >= 70%"}
             </Button>
           </div>
         </div>
@@ -128,7 +128,7 @@ export function GlobalTrafficMonitor({ transactions }: GlobalTrafficMonitorProps
                   <th className="text-left py-3 px-4 font-medium text-muted-foreground">Time</th>
                   <th className="text-left py-3 px-4 font-medium text-muted-foreground">Event Type</th>
                   <th className="text-left py-3 px-4 font-medium text-muted-foreground">Amount</th>
-                  <th className="text-left py-3 px-4 font-medium text-muted-foreground">Sender → Recipient</th>
+                  <th className="text-left py-3 px-4 font-medium text-muted-foreground">Sender {"->"} Recipient</th>
                   <th className="text-left py-3 px-4 font-medium text-muted-foreground">Risk</th>
                   <th className="text-left py-3 px-4 font-medium text-muted-foreground">Decision</th>
                   <th className="text-left py-3 px-4 font-medium text-muted-foreground">Ground Truth</th>
@@ -150,7 +150,7 @@ export function GlobalTrafficMonitor({ transactions }: GlobalTrafficMonitorProps
                     <td className="py-3 px-4 font-mono">{formatCurrency(t.amount)}</td>
                     <td className="py-3 px-4 font-mono text-xs">
                       <span className="truncate max-w-[80px] inline-block align-middle">{t.nameOrig}</span>
-                      <span className="mx-1 text-muted-foreground">→</span>
+                      <span className="mx-1 text-muted-foreground">{"->"}</span>
                       <span className="truncate max-w-[80px] inline-block align-middle">{t.nameDest}</span>
                     </td>
                     <td className="py-3 px-4">
@@ -239,3 +239,4 @@ export function GlobalTrafficMonitor({ transactions }: GlobalTrafficMonitorProps
     </div>
   );
 }
+

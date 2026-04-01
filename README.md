@@ -2,230 +2,167 @@
 
 ## Project Overview
 
-This project focuses on the data engineering and machine learning pipeline for fraud detection.
+This project now delivers the Assignment 3 full-stack fraud detection web application.
 
 The current implementation includes:
 
 - Data preprocessing and feature engineering
-- Model training and evaluation
-- Continuous learning simulation (prequential evaluation)
+- Trained model loading and API inference
+- React frontend with transaction simulation and results workflow
+- FastAPI backend integration for live scoring
+- Monitoring, history, and admin demo workflows
 
-The frontend interface and full system integration will be developed in Assignment 3.
+The system is built around a deployed Random Forest primary model for runtime predictions, with the training/research pipeline kept in the notebooks for model development and comparison.
 
 ## Architecture
 
-| Layer                | Technology                                      | Purpose                                                                  |
+| Layer | Technology | Purpose |
 | -------------------- | ----------------------------------------------- | ------------------------------------------------------------------------ |
-| **Machine Learning** | Python, scikit-learn, XGBoost, imbalanced-learn | Four-model architecture with SMOTE oversampling.                         |
-| **Prequential Loop** | Pandas, joblib, sklearn.linear_model            | Prequential evaluation (test-then-train) pipeline for Big Data streams.  |
-| **Backend API**      | FastAPI, Pydantic, Uvicorn                      | Asynchronous inference endpoints with deterministic feature engineering. |
-| **Frontend UI**      | React, Vite, TypeScript, Tailwind CSS           | Real-time monitoring dashboard and interactive transaction simulator.    |
+| **Machine Learning** | Python, scikit-learn, XGBoost, imbalanced-learn | Training, evaluation, and comparison in notebooks. |
+| **Backend API** | FastAPI, Pydantic, Uvicorn | Inference endpoints, schema validation, feature engineering pipeline, and model serving. |
+| **Frontend UI** | React, Vite, TypeScript, Tailwind CSS | Transaction simulator, result explainability, dashboard monitoring, history, and admin demo tools. |
 
 ## Repository Structure
 
 ```text
 anomaly-watchers-donutpuff/
-├── backend/                                  # FastAPI application domain
-│   ├── app/                                  # Core application logic
-│   │   ├── __init__.py                       # Marks ./backend/app as a Python package
-│   │   ├── main.py                           # Application entry point, API routes, and heuristic engine
-│   │   └── preprocessing.py                  # Shared ETL pipeline logic (build_feature_matrix)
-│   │
-│   ├── trained_models/                       # Serialized ML models and artifacts with v2 for updated models (Prequential Evaluation)
-│   │   ├── feature_columns.pkl               # Pickled list of exact column names for schema alignment
-│   │   ├── model_rf.pkl                      # Random Forest model pipeline
-│   │   ├── model_rf_v2.pkl
-│   │   ├── model_xgboost.pkl                 # XGBoost model pipeline
-│   │   ├── model_xgboost_v2.pkl
-│   │   └── archive/                          # Previous trained models
-│   │       ├── model_xgboost_v1.pkl
-│   │       ├── model_logistic_regression_v1.pkl
-│   │       └── ...*.pkl
-│   │
-│   ├── tests/                                # Backend test suite
-│   │   └── __init__.py                       # Marks ./backend/tests as a Python test package
-│   │
-│   ├── __init__.py                           # Marks ./backend as a Python package
-│   └── requirements.txt                      # Python dependencies
-│
-├── frontend/                                 # React TypeScript application
-│   ├── public/                               # Static assets
-│   ├── src/                                  # Frontend source code
-│   ├── components.json                       # Configuration file for shadcn/ui components
-│   ├── eslint.config.js                      # Linter configuration for code quality
-│   ├── index.html                            # Main HTML template for the Vite application
-│   ├── package.json                          # Node.js project metadata and dependencies
-│   ├── postcss.config.js                     # PostCSS configuration for CSS processing (used by Tailwind)
-│   ├── tailwind.config.ts                    # Tailwind CSS configuration for utility classes and theme
-│   ├── tsconfig.app.json                     # TypeScript configuration specific to the application code
-│   ├── tsconfig.json                         # Base TypeScript configuration
-│   ├── tsconfig.node.json                    # TypeScript configuration for Node environments
-│   ├── vite.config.ts                        # Vite build tool configuration
-│   └── vitest.config.ts                      # Vitest testing framework configuration
-│
-├── ml_pipeline/                              # Machine learning development
-│   ├── data/                                 # Storage for generated datasets
-│   │   ├── additional_dataset_1692201870.csv # Generated dataset chunk 1
-│   │   ├── additional_dataset_1693836805.csv #               ... chunk 2
-│   │   ├── additional_dataset_1697052344.csv #               ... chunk 3
-│   │   ├── additional_dataset_1697079627.csv #               ... chunk 4
-│   │   ├── additional_dataset_1698465888.csv #               ... chunk 5
-│   │   └── Stratified_Sampling.webp          # Educational image diagramming the stratified split process
-│   │
-│   └── notebooks/                            # Jupyter training notebooks
-│       ├── .env                              # Environment variables for storing Kaggle API credentials
-│       ├── .ipynb_checkpoints/               # Autosave directory for Jupyter
-│       ├── 01_primary_analysis.ipynb         # EDA, pipeline creation, and initial model training
-│       └── 02_continuous_learning.ipynb      # Incremental learning loop over the additional data chunks
-│
-├── .gitignore                                # Git ignore rules
-├── README.md                                 # This file
-└── start_project.bat                         # Windows startup script
-
+|-- backend/
+|   |-- app/
+|   |   |-- main.py                # FastAPI routes and model inference logic
+|   |   |-- preprocessing.py       # Shared feature engineering pipeline
+|   |   `-- schemas.py             # API request/response schemas
+|   |-- trained_models/            # Serialized model artifacts
+|   `-- requirements.txt
+|
+|-- frontend/
+|   |-- src/
+|   |   |-- api.ts                 # Frontend API client
+|   |   |-- pages/                 # Landing, Simulate, Result, History, Admin
+|   |   |-- components/            # Dashboard, simulator, result, admin UI
+|   |   `-- lib/                   # Storage and scoring helpers
+|   `-- package.json
+|
+|-- ml_pipeline/
+|   |-- data/
+|   `-- notebooks/                 # Assignment 2 / training and continuous learning work
+|
+`-- start_project.bat              # Windows startup helper
 ```
 
 ### Repository Structure Overview
 
-The project is organized into three distinct domains: backend, frontend, and machine learning. Each domain corresponds to the 3 main layers of the application.
+The repository is organized into three domains:
 
-- backend/: Contains the FastAPI application that serves the fraud detection API. The `app/` directory houses the core application logic, `models/` stores serialized ML models, and `tests/` contains the test suite.
-- frontend/: A React TypeScript single-page application providing an interactive interface for fraud detection. Built with Vite for fast development and optimized production builds.
-- ml_pipeline/: Houses all machine learning development work. The `data/` directory contains training datasets, and `notebooks/` contains the two primary Jupyter notebooks that implement the complete ML pipeline.
+- `backend/`: FastAPI inference service and shared preprocessing pipeline.
+- `frontend/`: React TypeScript application and simulator workflows.
+- `ml_pipeline/`: model training, evaluation, and continuous learning experiments.
 
 ## Local Setup and Installation
 
-Follow these instructions to configure the environment and start the application locally.
+Follow these instructions to run the project locally.
 
 ### Prerequisites
 
-1. **Node.js** (version 18.0 or higher) and **npm** (Node Package Manager). You can download them from the official Node.js website.
+1. **Node.js** (18+ recommended) and **npm**
+2. **Python** (3.10+ recommended)
 
-2. **Python** (version 3.10 or higher). You can download it from the official Python website. Check the box that says "Add Python to PATH" during installation.
+### Quick Start (Recommended)
 
-### Step 1: Install Backend Dependencies
+Use the provided startup script from the repository root:
 
-Navigate to the `backend` directory and install the required Python packages.
+```bash
+start_project.bat
+```
+
+This script:
+
+- creates backend virtual environment if needed
+- installs backend/frontend dependencies
+- starts FastAPI on `http://127.0.0.1:8000`
+- starts frontend on `http://localhost:8080`
+
+### Manual Start
+
+#### Backend
 
 ```bash
 cd backend
-pip install -r requirements.txt
-cd ..
-
+python -m venv .venv
+.venv\Scripts\python -m pip install -r requirements.txt
+.venv\Scripts\python -m uvicorn app.main:app --reload
 ```
 
-### Step 2: Install Frontend Dependencies
-
-Navigate to the `frontend` directory and install the Node modules.
+#### Frontend
 
 ```bash
 cd frontend
 npm install
-cd ..
-
+npm run dev
 ```
 
-### Step 3: Configure Machine Learning Data
+The Vite dev server runs on `http://localhost:8080`.
 
-To execute the Jupyter Notebooks and download the raw data to train the models locally, you must provide Kaggle API credentials.
+## Frontend-Backend Integration
 
-1. Create an account on Kaggle and generate an API token (this will give you a username and a key).
-2. Create a new file named exactly `.env`.
-3. **CRITICAL DETAIL**: You must place this `.env` file in the exact same directory as the primary notebook: `ml_pipeline/notebooks/.env`.
-4. Open the `.env` file and insert your credentials:
+The frontend calls the FastAPI backend directly in development:
 
-```env
-KAGGLE_USERNAME="your_actual_username"
-KAGGLE_KEY="your_actual_api_key"
+- `POST /predict/primary` for scoring
+- `GET /health` for backend status
 
-```
+Core inference flow:
 
-## Model Training
+1. User enters transaction data in the simulator
+2. Frontend sends payload to FastAPI
+3. Backend applies preprocessing (`build_feature_matrix`)
+4. Random Forest model produces fraud probability
+5. Frontend renders risk score, decision mapping, and explainability factors
 
-The models are trained using Jupyter Notebooks located in:
+## API Endpoints (Current Build)
 
-`ml_pipeline/notebooks/`
+- `GET /` -> health summary
+- `GET /health` -> health summary
+- `POST /predict/primary` -> primary fraud prediction response
 
-### Step 1: Run Primary Training
+## Model Deployment (Current Build)
 
-Open and execute:
-` 01_primary_analysis.ipynb`
+The runtime web app uses **Random Forest as the primary deployed model**.
 
-This notebook:
+- Primary artifact loading happens in `backend/app/main.py`
+- Feature alignment uses `feature_columns.pkl` when available
+- Prediction responses include probability, risk level, and risk factors
 
-- Downloads the dataset
-- Performs data cleaning and preprocessing
-- Applies feature engineering
-- Trains 4 models: Logistic Regression, Random Forest, XGBoost, Isolation Forest
-- Evaluates performance using F1-score and AUPRC
+Other models (for example XGBoost) are kept for training/research work in Assignment 2 notebooks and artifact history, but are not the primary live web inference path in this build.
 
-### Step 2: Run Continuous Learning Pipeline
+## Real vs Simulated Behavior
 
-` 02_continuous_learning.ipynb`
+This project intentionally mixes real full-stack inference with demo-safe simulation features.
 
-This notebook:
+### Real implemented
 
-- Simulates real-world streaming data
-- Applies prequential evaluation (test-then-train)
-- Updates models incrementally
+- End-to-end frontend -> backend -> model inference (`/predict/primary`)
+- Backend schema validation and error handling
+- Feature engineering pipeline in backend runtime
+- Health endpoint and frontend dashboard status indicator
 
-## Output
+### Simulated / demo behavior
 
-Trained models are saved in:
-``backend/trained_models/
+- OTP uses a static demo code for assignment simulation
+- Live dashboard stream uses synthetic demo transactions as input
+- Admin console is marked demo mode (no production authentication)
+- If backend is unavailable, simulator can fall back to local demo rules so the UI flow still works for presentation
 
-Example files:
+## Evaluation Context
 
-`model_rf.pkl` → Random Forest
+The training/evaluation work (Assignment 2) is in `ml_pipeline/notebooks/`.
 
-`model_xgboost.pkl` → XGBoost
-
-`feature_columns.pkl` → Feature schema
-
-## Model Evaluation
-
-Due to extreme class imbalance (~0.13% fraud), traditional accuracy is not used. Instead, we use:
-
-- **F1-score**: balance of precision and recall
-- **AUPRC**: focuses on detecting rare fraud cases
-
-## Model Inference and Evaluation
-
-At this stage, predictions are generated within the machine learning notebooks during model evaluation and continuous learning experiments, rather than through a deployed API.
-
-The trained models take raw transaction attributes as input, apply the preprocessing and feature engineering pipeline, and then output a fraud classification and evaluation score during notebook execution.
-
-Prediction capability is currently demonstrated through:
-
-- cross-validation results in `01_primary_analysis.ipynb`
-
-- prequential evaluation in `02_continuous_learning.ipynb`
-
-A production prediction endpoint and web-based input form will be implemented in Assignment 3.
-
-## Prediction Flow (Current Implementation)
-
-At this stage, predictions are generated within the machine learning pipeline during notebook execution.
-
-1. Raw transaction data is loaded from the dataset
-2. Feature engineering is applied (`build_feature_matrix`)
-3. The trained model generates predictions
-4. Results are evaluated using F1-score and AUPRC
-
-Note: A real-time prediction API and user interface will be implemented in Assignment 3.
-
-## Continuous Learning (Prequential Evaluation)
-
-The system simulates real-world deployment using a **test-then-train** approach:
-
-- Each data chunk is evaluated before updating the model
-- Prevents temporal data leakage
-- Reflects real-world fraud detection performance
+- Dataset is highly imbalanced (fraud is a small minority of records)
+- Notebook work includes model comparison and continuous learning experiments
+- Runtime web app is focused on deterministic inference integration and explainability display
 
 ## Acknowledgments
 
-This project builds upon the synthetic data generation tools and foundational research published by PhD. Edgar Lopez-Rojas. We extend our gratitude for his contributions to the fraud detection community.
-
-Our group utilized his original Kaggle dataset for the primary data analysis and deployed his open-source PaySim simulator to generate the five distinct datasets required for the continuous learning implementation.
+This project builds upon synthetic data generation tools and foundational fraud-detection research by PhD. Edgar Lopez-Rojas.
 
 - **Kaggle Dataset Link:** [Synthetic Financial Datasets For Fraud Detection](https://www.kaggle.com/datasets/ealaxi/paysim1/data)
 - **GitHub Repo Link:** [PaySim Simulator Repository](https://github.com/EdgarLopezPhD/PaySim/tree/master)
+

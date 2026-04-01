@@ -123,9 +123,9 @@ export default function Admin() {
     const avgRisk = transactions.reduce((sum, t) => sum + t.riskScore, 0) / total;
 
     // Risk distribution
-    const lowRisk = transactions.filter(t => t.riskScore < 0.35).length;
-    const medRisk = transactions.filter(t => t.riskScore >= 0.35 && t.riskScore < 0.7).length;
-    const highRisk = transactions.filter(t => t.riskScore >= 0.7).length;
+    const lowRisk = transactions.filter(t => t.riskScore < 35).length;
+    const medRisk = transactions.filter(t => t.riskScore >= 35 && t.riskScore < 70).length;
+    const highRisk = transactions.filter(t => t.riskScore >= 70).length;
 
     return {
       total,
@@ -136,7 +136,7 @@ export default function Admin() {
       blocked,
       blockRate: (blocked / total * 100).toFixed(1),
       flagged,
-      avgRisk: (avgRisk * 100).toFixed(1),
+      avgRisk: avgRisk.toFixed(1),
       distribution: { low: lowRisk, medium: medRisk, high: highRisk },
     };
   }, [transactions]);

@@ -16,6 +16,7 @@ import { AccountSelector } from "./AccountSelector";
 import { WalletWidget } from "./WalletWidget";
 import { ProcessingModal } from "./ProcessingModal";
 import { SimulatorHelpCallout } from "./SimulatorHelpCallout";
+import { OTPChallenge } from "@/components/result/OTPChallenge";
 import { TimeStepBadge } from "@/components/ui/TimeStepBadge";
 import { TransactionPreset } from "@/lib/presets";
 import { EVENT_TYPE_LABELS, formatCurrency } from "@/lib/eventTypes";
@@ -36,7 +37,11 @@ import {
   getAdminSettings,
   setPendingTransaction,
 } from "@/lib/storage";
-import { computeIsFlaggedFraud } from "@/lib/scoring";
+import {
+  computeIsFlaggedFraud,
+  getRiskLevel,
+  scoreTransaction,
+} from "@/lib/scoring";
 import { predictPrimary } from "@/api";
 import {
   RotateCcw,
@@ -49,6 +54,14 @@ import {
 
 interface FormErrors {
   [key: string]: string;
+}
+
+function formatBackendRiskLevel(
+  level: "low" | "medium" | "high",
+): "Low" | "Medium" | "High" {
+  if (level === "high") return "High";
+  if (level === "medium") return "Medium";
+  return "Low";
 }
 
 export function TransactionForm() {
@@ -68,6 +81,7 @@ export function TransactionForm() {
   const [errors, setErrors] = useState<FormErrors>({});
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [showProcessingModal, setShowProcessingModal] = useState(false);
+  const [showStepUpOTP, setShowStepUpOTP] = useState(false);
   const [pendingTransactionData, setPendingTransactionData] =
     useState<Transaction | null>(null);
 
@@ -182,39 +196,35 @@ export function TransactionForm() {
     setErrors({});
   };
 
+  const finalizeTransaction = useCallback(
+    (transaction: Transaction) => {
+      saveTransaction(transaction);
+
+      const shouldApplyBalances =
+        transaction.decision === "APPROVE" ||
+        transaction.decision === "APPROVE_AFTER_STEPUP";
+
+      if (shouldApplyBalances) {
+        updateOriginAccount(transaction.nameOrig, transaction.newbalanceOrig);
+        updateDestinationBalance(transaction.nameDest, transaction.newbalanceDest);
+      }
+
+      setLastStep(transaction.step);
+      setPendingTransaction(transaction);
+      navigate("/result");
+    },
+    [navigate],
+  );
+
   const handleProcessingComplete = useCallback(() => {
     if (pendingTransactionData) {
-      // Save transaction
-      saveTransaction(pendingTransactionData);
-
-      // Update balances
-      updateOriginAccount(
-        pendingTransactionData.nameOrig,
-        pendingTransactionData.newbalanceOrig,
-      );
-      updateDestinationBalance(
-        pendingTransactionData.nameDest,
-        pendingTransactionData.newbalanceDest,
-      );
-
-      // Update last step
-      setLastStep(pendingTransactionData.step);
-
-      // Store pending transaction for result page
-      setPendingTransaction(pendingTransactionData);
-
-      // Navigate to result
-      navigate("/result");
+      finalizeTransaction(pendingTransactionData);
     }
     setShowProcessingModal(false);
     setIsSubmitting(false);
-  }, [pendingTransactionData, navigate]);
+  }, [finalizeTransaction, pendingTransactionData]);
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-
-    if (!validate()) return;
-
+  const submitVerifiedTransaction = useCallback(async () => {
     setIsSubmitting(true);
 
     try {
@@ -240,13 +250,22 @@ export function TransactionForm() {
 
       // Map Backend Response to Frontend Types
       // API returns probability as 0-1, we convert to percentage
-      const riskScore = Math.round(apiResponse.probability * 100);
+      const riskProbability = apiResponse.probability;
+      const riskScore = Math.round(riskProbability * 100);
       const isFraud = apiResponse.is_fraud;
       const riskLevel = apiResponse.risk_level;
 
-      let decision: "APPROVE" | "STEP_UP" | "BLOCK" = "APPROVE";
-      if (riskLevel === "High") decision = "BLOCK";
-      else if (riskLevel === "Medium") decision = "STEP_UP";
+      // Keep the demo OTP flow aligned with the Admin threshold settings.
+      // The backend still provides the probability, while the frontend maps
+      // that score into APPROVE / STEP_UP / BLOCK for the simulator UX.
+      let decision: Transaction["decision"] = "APPROVE";
+      if (riskProbability < adminSettings.approveThreshold) {
+        decision = "APPROVE";
+      } else if (riskProbability >= adminSettings.blockThreshold) {
+        decision = "BLOCK";
+      } else {
+        decision = "APPROVE_AFTER_STEPUP";
+      }
 
       // Create Reasons List — use structured XAI factors from the backend
       const modelReasons = [
@@ -291,24 +310,81 @@ export function TransactionForm() {
         createdAt: new Date().toISOString(),
       };
 
-      // Store transaction data and show processing modal
       setPendingTransactionData(transaction);
       setShowProcessingModal(true);
     } catch (error: any) {
       console.error("API Error:", error);
+      if (error.request && !error.response) {
+        const finalNameDest = computedNameDest;
+        const isFlaggedFraud = computeIsFlaggedFraud(
+          type as TransactionType,
+          amountNum,
+          adminSettings,
+        );
+        const fallbackResult = scoreTransaction(
+          {
+            type: type as TransactionType,
+            amount: amountNum,
+            oldbalanceOrg,
+            newbalanceOrig,
+            oldbalanceDest,
+            newbalanceDest,
+            isFlaggedFraud,
+          },
+          adminSettings,
+        );
+
+        const fallbackTransaction: Transaction = {
+          id: crypto.randomUUID(),
+          step,
+          type: type as TransactionType,
+          amount: amountNum,
+          nameOrig,
+          oldbalanceOrg,
+          newbalanceOrig,
+          nameDest: finalNameDest,
+          oldbalanceDest,
+          newbalanceDest,
+          isFraud: fallbackResult.decision === "BLOCK" ? 1 : 0,
+          isFlaggedFraud,
+          riskScore: Math.round(fallbackResult.riskScore * 100),
+          decision:
+            fallbackResult.decision === "STEP_UP"
+              ? "APPROVE_AFTER_STEPUP"
+              : fallbackResult.decision,
+          reasons: [
+            "AI backend unavailable - using local demo risk rules.",
+            ...fallbackResult.reasons,
+          ],
+          backendRiskLevel: formatBackendRiskLevel(
+            getRiskLevel(fallbackResult.riskScore),
+          ),
+          backendExplanation:
+            "The live backend was unavailable, so the simulator used local rules to keep the demo flow running.",
+          createdAt: new Date().toISOString(),
+        };
+
+        setPendingTransactionData(fallbackTransaction);
+        setErrors({});
+        setShowProcessingModal(true);
+
+        return;
+      }
 
       let errorMessage = "Could not connect to the AI backend.";
 
       if (error.response) {
-        // The request was made and the server responded with a status code
-        // that falls out of the range of 2xx
+        const responseBody = error.response.data;
+        const responseDetail =
+          typeof responseBody === "string"
+            ? responseBody
+            : responseBody?.detail ||
+              responseBody?.message ||
+              JSON.stringify(responseBody);
+
         errorMessage = `Server Error (${error.response.status}): ${
-          error.response.data?.detail || error.response.statusText
+          responseDetail || error.response.statusText
         }`;
-      } else if (error.request) {
-        // The request was made but no response was received
-        errorMessage =
-          "No response from AI backend. Check if the server is running.";
       } else {
         errorMessage = `Request Error: ${error.message}`;
       }
@@ -318,6 +394,101 @@ export function TransactionForm() {
       });
       setIsSubmitting(false);
     }
+  }, [
+    adminSettings,
+    amountNum,
+    computedNameDest,
+    nameOrig,
+    newbalanceDest,
+    newbalanceOrig,
+    oldbalanceDest,
+    oldbalanceOrg,
+    step,
+    type,
+  ]);
+
+  const handleStepUpOTPSuccess = useCallback(() => {
+    setShowStepUpOTP(false);
+    setErrors({});
+    submitVerifiedTransaction();
+  }, [submitVerifiedTransaction]);
+
+  const handleStepUpOTPFail = useCallback(() => {
+    setShowStepUpOTP(false);
+    setIsSubmitting(false);
+    setErrors({
+      submit: "OTP verification failed. Transaction was not submitted.",
+    });
+  }, []);
+
+  const handleStepUpOTPCancel = useCallback(() => {
+    const finalNameDest = computedNameDest;
+    const isFlaggedFraud = computeIsFlaggedFraud(
+      type as TransactionType,
+      amountNum,
+      adminSettings,
+    );
+
+    const fallbackResult = scoreTransaction(
+      {
+        type: type as TransactionType,
+        amount: amountNum,
+        oldbalanceOrg,
+        newbalanceOrig,
+        oldbalanceDest,
+        newbalanceDest,
+        isFlaggedFraud,
+      },
+      adminSettings,
+    );
+
+    const blockedTransaction: Transaction = {
+      id: crypto.randomUUID(),
+      step,
+      type: type as TransactionType,
+      amount: amountNum,
+      nameOrig,
+      oldbalanceOrg,
+      newbalanceOrig,
+      nameDest: finalNameDest,
+      oldbalanceDest,
+      newbalanceDest,
+      isFraud: 1,
+      isFlaggedFraud,
+      riskScore: 100,
+      decision: "BLOCK",
+      reasons: ["OTP verification was cancelled", ...fallbackResult.reasons],
+      backendRiskLevel: "High",
+      backendExplanation:
+        "Transaction blocked because OTP verification was cancelled.",
+      createdAt: new Date().toISOString(),
+    };
+
+    setShowStepUpOTP(false);
+    setErrors({});
+    setIsSubmitting(false);
+    finalizeTransaction(blockedTransaction);
+  }, [
+    adminSettings,
+    amountNum,
+    computedNameDest,
+    finalizeTransaction,
+    nameOrig,
+    newbalanceDest,
+    newbalanceOrig,
+    oldbalanceDest,
+    oldbalanceOrg,
+    step,
+    type,
+  ]);
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+
+    if (!validate()) return;
+
+    setErrors({});
+    setShowStepUpOTP(true);
   };
 
   const isValid = type && nameOrig && amountNum > 0 && step >= 1;
@@ -621,6 +792,36 @@ export function TransactionForm() {
         isOpen={showProcessingModal}
         onComplete={handleProcessingComplete}
       />
+
+      {showStepUpOTP && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="otp-precheck-title"
+        >
+          <div className="absolute inset-0 bg-background/80 backdrop-blur-sm" />
+          <div className="relative w-full max-w-md mx-4 bg-card rounded-xl shadow-xl border border-border p-6 sm:p-8 animate-fade-in">
+            <div className="text-center mb-4">
+              <h2
+                id="otp-precheck-title"
+                className="text-xl sm:text-2xl font-bold text-foreground"
+              >
+                Verify Before Submission
+              </h2>
+              <p className="text-sm text-muted-foreground mt-1">
+                This demo transaction requires OTP verification before it can be processed.
+              </p>
+            </div>
+
+            <OTPChallenge
+              onSuccess={handleStepUpOTPSuccess}
+              onFail={handleStepUpOTPFail}
+              onCancel={handleStepUpOTPCancel}
+            />
+          </div>
+        </div>
+      )}
     </>
   );
 }

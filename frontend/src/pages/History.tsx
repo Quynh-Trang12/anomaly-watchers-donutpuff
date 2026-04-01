@@ -34,7 +34,7 @@ export default function History() {
       if (decisionFilter !== "ALL" && t.decision !== decisionFilter) return false;
       if (flaggedFilter === "YES" && t.isFlaggedFraud !== 1) return false;
       if (flaggedFilter === "NO" && t.isFlaggedFraud !== 0) return false;
-      if (highRiskOnly && t.riskScore < 0.7) return false;
+      if (highRiskOnly && t.riskScore < 70) return false;
       return true;
     });
   }, [transactions, typeFilter, decisionFilter, flaggedFilter, highRiskOnly]);
@@ -138,7 +138,7 @@ export default function History() {
                   onClick={() => setHighRiskOnly(!highRiskOnly)}
                   aria-pressed={highRiskOnly}
                 >
-                  {highRiskOnly ? "✓ Risk ≥ 70%" : "Risk ≥ 70%"}
+                  {highRiskOnly ? "Yes: Risk >= 70%" : "Risk >= 70%"}
                 </Button>
               </div>
             </div>
