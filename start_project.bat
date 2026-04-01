@@ -1,66 +1,19 @@
 @echo off
-setlocal
-
-set "ROOT=%~dp0"
-set "BACKEND_DIR=%ROOT%backend"
-set "FRONTEND_DIR=%ROOT%frontend"
-set "BACKEND_PY=%BACKEND_DIR%\.venv\Scripts\python.exe"
-
 echo ===================================================
-echo Starting AnomalyWatchers - FinTech Fraud Simulator
+echo [COS30049] Starting AnomalyWatchers
 echo ===================================================
 
-where npm >nul 2>nul
-if errorlevel 1 (
-  echo [ERROR] Node.js / npm was not found in PATH.
-  echo Please install Node.js LTS and reopen this script.
-  pause
-  exit /b 1
-)
+:: Start Backend in a new window with a clear warning title
+echo [*] Starting FastAPI Backend...
+start "BACKEND" cmd /k "title BACKEND SERVER - DO NOT CLOSE THIS WINDOW && cd backend && pip install -r requirements.txt && uvicorn app.main:app --reload"
 
-if not exist "%BACKEND_DIR%\requirements.txt" (
-  echo [ERROR] Backend requirements file was not found.
-  pause
-  exit /b 1
-)
+:: Start Frontend in a new window with a clear warning title
+echo [*] Starting React Frontend...
+start "FRONTEND" cmd /k "title FRONTEND SERVER - DO NOT CLOSE THIS WINDOW && cd frontend && npm install && npm run dev"
 
-if not exist "%FRONTEND_DIR%\package.json" (
-  echo [ERROR] Frontend package.json was not found.
-  pause
-  exit /b 1
-)
-
-if not exist "%BACKEND_PY%" (
-  where py >nul 2>nul
-  if not errorlevel 1 (
-    echo Creating backend virtual environment with py...
-    pushd "%BACKEND_DIR%"
-    py -m venv .venv
-    popd
-  ) else (
-    where python >nul 2>nul
-    if errorlevel 1 (
-      echo [ERROR] Python was not found in PATH.
-      echo Install Python 3.11+ and ensure it is added to PATH.
-      pause
-      exit /b 1
-    )
-    echo Creating backend virtual environment with python...
-    pushd "%BACKEND_DIR%"
-    python -m venv .venv
-    popd
-  )
-)
-
-echo Starting FastAPI backend...
-start "AnomalyWatchers Backend" cmd /k "cd /d ""%BACKEND_DIR%"" && ""%BACKEND_PY%"" -m pip install -r requirements.txt && ""%BACKEND_PY%"" -m uvicorn app.main:app --reload"
-
-echo Starting React frontend...
-start "AnomalyWatchers Frontend" cmd /k "cd /d ""%FRONTEND_DIR%"" && npm install && npm run dev"
-
-echo Opening app in browser...
-start "" http://localhost:8080
-
-echo Both services are starting in separate windows.
-echo If the simulator shows "No response from AI backend", wait for the backend window to finish starting.
+echo ---------------------------------------------------
+echo [SUCCESS] Both services are starting up.
+echo [CRITICAL] KEEP THE TWO NEW TERMINAL WINDOWS OPEN! 
+echo Closing them will shut down the servers and cause the Server Error: 500.
+echo ---------------------------------------------------
 pause
