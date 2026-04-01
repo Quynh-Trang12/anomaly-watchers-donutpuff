@@ -357,8 +357,8 @@ export function TransactionForm() {
           {/* Left Column - Form */}
           <div className="min-w-0 space-y-4 sm:space-y-6">
             {/* Section 1: WHO - Account Selection with Wallet Preview */}
-            <fieldset className="form-fieldset">
-              <legend className="form-legend">1. Who is Sending?</legend>
+            <fieldset className="form-fieldset min-w-0">
+              <legend className="form-legend">Sender</legend>
 
               <div className="space-y-4">
                 <AccountSelector
@@ -383,7 +383,7 @@ export function TransactionForm() {
             {/* Section 2: WHAT - Transaction Type & Amount */}
             <fieldset className="form-fieldset">
               <legend className="form-legend">
-                2. What Type of Transaction?
+                Type of Transaction
               </legend>
 
               <div className="space-y-4">
@@ -457,7 +457,7 @@ export function TransactionForm() {
 
             {/* Section 3: WHERE - Destination (mostly auto-generated) */}
             <fieldset className="form-fieldset">
-              <legend className="form-legend">3. Where is it Going?</legend>
+              <legend className="form-legend">Receiver</legend>
 
               <div className="space-y-2">
                 <Label htmlFor="nameDest">Recipient / Merchant</Label>

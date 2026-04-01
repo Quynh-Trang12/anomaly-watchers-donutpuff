@@ -17,7 +17,9 @@ export function AccountSelector({
   disabled = false,
 }: AccountSelectorProps) {
   return (
-    <div className="grid gap-2 sm:gap-3">
+    // ARCHITECTURAL CHANGE: Replaced CSS Grid with a horizontal flex container.
+    // Added scroll-snapping for mobile optimization and hidden scrollbars for clean UI.
+    <div className="flex overflow-x-auto gap-3 pb-4 snap-x snap-mandatory [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
       {accounts.map((account) => {
         const isSelected = account.id === selectedId;
         const isLowBalance = account.balance < 1000;
@@ -29,6 +31,8 @@ export function AccountSelector({
             onClick={() => onSelect(account.id)}
             disabled={disabled}
             className={cn(
+              // ARCHITECTURAL CHANGE: Forced elements to not shrink (shrink-0), gave them a fixed optimal width, and aligned them to the scroll snap points.
+              "shrink-0 w-[280px] sm:w-[320px] snap-center",
               "relative flex items-center gap-3 p-3 sm:p-4 rounded-lg border-2 text-left transition-all duration-200",
               "hover:border-primary/50 hover:bg-accent/50",
               "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
