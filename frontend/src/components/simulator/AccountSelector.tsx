@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef } from "react";
 import { OriginAccount } from "@/types/transaction";
 import { formatCurrency } from "@/lib/eventTypes";
 import { cn } from "@/lib/utils";
-import { Wallet, CheckCircle2 } from "lucide-react";
+import { Wallet, CheckCircle2, ChevronLeft, ChevronRight } from "lucide-react";
 
 interface AccountSelectorProps {
   accounts: OriginAccount[];
@@ -66,6 +66,26 @@ export function AccountSelector({
       pickNearestAccount();
     }, 120);
   };
+
+  const selectedIndex = accounts.findIndex((account) => account.id === selectedId);
+  const canGoPrev = !disabled && selectedIndex > 0;
+  const canGoNext =
+    !disabled && selectedIndex >= 0 && selectedIndex < accounts.length - 1;
+
+  const handleMoveSelection = useCallback(
+    (direction: -1 | 1) => {
+      if (disabled || accounts.length === 0) return;
+      const currentIndex = selectedIndex >= 0 ? selectedIndex : 0;
+      const nextIndex = Math.max(
+        0,
+        Math.min(accounts.length - 1, currentIndex + direction),
+      );
+      if (nextIndex !== currentIndex) {
+        onSelect(accounts[nextIndex].id);
+      }
+    },
+    [accounts, disabled, onSelect, selectedIndex],
+  );
 
   useEffect(() => {
     const scrollArea = scrollAreaRef.current;
@@ -166,9 +186,41 @@ export function AccountSelector({
           );
         })}
       </div>
-      <p className="pt-2 px-1 text-xs text-muted-foreground">
-        Click an account or place the cursor here and scroll to slide between accounts.
-      </p>
+      <div className="pt-2 px-1 flex items-center gap-2">
+        <button
+          type="button"
+          onClick={() => handleMoveSelection(-1)}
+          disabled={!canGoPrev}
+          className={cn(
+            "inline-flex h-7 w-7 items-center justify-center rounded-md border border-border bg-background text-muted-foreground transition-colors",
+            "hover:bg-accent hover:text-foreground",
+            "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
+            (!canGoPrev || disabled) && "opacity-50 cursor-not-allowed",
+          )}
+          aria-label="Previous account"
+        >
+          <ChevronLeft className="h-4 w-4" aria-hidden="true" />
+        </button>
+
+        <button
+          type="button"
+          onClick={() => handleMoveSelection(1)}
+          disabled={!canGoNext}
+          className={cn(
+            "inline-flex h-7 w-7 items-center justify-center rounded-md border border-border bg-background text-muted-foreground transition-colors",
+            "hover:bg-accent hover:text-foreground",
+            "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
+            (!canGoNext || disabled) && "opacity-50 cursor-not-allowed",
+          )}
+          aria-label="Next account"
+        >
+          <ChevronRight className="h-4 w-4" aria-hidden="true" />
+        </button>
+
+        <p className="text-xs text-muted-foreground">
+          Click an account or use the arrows to move left/right.
+        </p>
+      </div>
     </div>
   );
 }

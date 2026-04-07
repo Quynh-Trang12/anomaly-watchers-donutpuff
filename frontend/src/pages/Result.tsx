@@ -6,6 +6,7 @@ import { DecisionBadge } from "@/components/ui/DecisionBadge";
 import { RiskScore } from "@/components/ui/RiskScore";
 import { OTPChallenge } from "@/components/result/OTPChallenge";
 import { TransactionDatasetView } from "@/components/result/TransactionDatasetView";
+import { patchTransaction } from "@/api";
 import {
   Transaction,
   Decision,
@@ -14,9 +15,9 @@ import {
 import {
   getPendingTransaction,
   clearPendingTransaction,
-  updateTransaction,
   getAdminSettings,
 } from "@/lib/storage";
+import { getCurrentRole } from "@/lib/auth";
 import { getEventTypeLabel, formatCurrency } from "@/lib/eventTypes";
 import {
   PlayCircle,
@@ -30,6 +31,13 @@ import {
 } from "lucide-react";
 
 const OTP_CANCEL_REASON = "OTP verification was cancelled";
+const UPDATE_FAILED_MESSAGE =
+  "Could not sync this result to backend history. Please refresh and retry.";
+
+function displayReasonByRole(reason: string, isAdmin: boolean): string {
+  if (isAdmin) return reason;
+  return reason.replace(/\bRandom Forest\b/gi, "Model");
+}
 
 // Generate human-readable explanations for risk factors
 function generateExplainability(
@@ -178,9 +186,11 @@ function generateExplainability(
 
 export default function Result() {
   const navigate = useNavigate();
+  const isAdmin = getCurrentRole() === "admin";
   const [transaction, setTransaction] = useState<Transaction | null>(null);
   const [showOTP, setShowOTP] = useState(false);
   const [finalDecision, setFinalDecision] = useState<Decision | null>(null);
+  const [updateError, setUpdateError] = useState<string | null>(null);
   const headingRef = useRef<HTMLHeadingElement>(null);
 
   useEffect(() => {
@@ -207,17 +217,27 @@ export default function Result() {
   const handleOTPSuccess = () => {
     if (!transaction) return;
     const newDecision: Decision = "APPROVE_AFTER_STEPUP";
+
+    setTransaction({ ...transaction, decision: newDecision });
     setFinalDecision(newDecision);
     setShowOTP(false);
-    updateTransaction(transaction.id, { decision: newDecision });
+    setUpdateError(null);
+    void patchTransaction(transaction.id, { decision: newDecision }).catch(() => {
+      setUpdateError(UPDATE_FAILED_MESSAGE);
+    });
   };
 
   const handleOTPFail = () => {
     if (!transaction) return;
     const newDecision: Decision = "BLOCK_STEPUP_FAILED";
+
+    setTransaction({ ...transaction, decision: newDecision });
     setFinalDecision(newDecision);
     setShowOTP(false);
-    updateTransaction(transaction.id, { decision: newDecision });
+    setUpdateError(null);
+    void patchTransaction(transaction.id, { decision: newDecision }).catch(() => {
+      setUpdateError(UPDATE_FAILED_MESSAGE);
+    });
   };
 
   const handleOTPCancel = () => {
@@ -236,11 +256,14 @@ export default function Result() {
     });
     setFinalDecision(newDecision);
     setShowOTP(false);
-    updateTransaction(transaction.id, {
+    setUpdateError(null);
+    void patchTransaction(transaction.id, {
       decision: newDecision,
       isFraud: 1,
       riskScore: 100,
       reasons,
+    }).catch(() => {
+      setUpdateError(UPDATE_FAILED_MESSAGE);
     });
   };
 
@@ -269,6 +292,7 @@ export default function Result() {
     BLOCK: "bg-danger-muted border-danger/20",
     APPROVE_AFTER_STEPUP: "bg-success-muted border-success/20",
     BLOCK_STEPUP_FAILED: "bg-danger-muted border-danger/20",
+    PENDING_ADMIN_REVIEW: "bg-warning-muted border-warning/20",
   };
 
   const severityStyles = {
@@ -294,6 +318,12 @@ export default function Result() {
             </h1>
             <DecisionBadge decision={displayDecision} size="lg" />
           </div>
+
+          {updateError && (
+            <div className="rounded-lg border border-danger/30 bg-danger-muted px-4 py-3 text-sm text-danger">
+              {updateError}
+            </div>
+          )}
 
           {/* OTP Challenge */}
           {showOTP && (
@@ -323,7 +353,7 @@ export default function Result() {
                         className="h-4 w-4 text-muted-foreground shrink-0 mt-0.5"
                         aria-hidden="true"
                       />
-                      {reason}
+                      {displayReasonByRole(reason, isAdmin)}
                     </li>
                   ))}
                 </ul>

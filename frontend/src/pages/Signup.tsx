@@ -1,5 +1,5 @@
-import { FormEvent, useMemo, useState } from "react";
-import { Link, useNavigate, useSearchParams } from "react-router-dom";
+import { FormEvent, useState } from "react";
+import { Link, useNavigate } from "react-router-dom";
 import { Layout } from "@/components/layout/Layout";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -10,7 +10,7 @@ import {
   isAuthenticated,
   setAuthSession,
 } from "@/lib/auth";
-import { fetchCurrentUser, login } from "@/api";
+import { fetchCurrentUser, signup } from "@/api";
 import { clearPendingTransaction } from "@/lib/storage";
 
 function getErrorMessage(error: unknown): string {
@@ -50,60 +50,54 @@ function getErrorMessage(error: unknown): string {
     return error.message;
   }
 
-  return "Login failed. Please check your credentials and try again.";
+  return "Sign up failed. Please check your inputs and try again.";
 }
 
-export default function Login() {
+export default function Signup() {
   const navigate = useNavigate();
-  const [searchParams] = useSearchParams();
   const currentUser = getCurrentUser();
 
-  const [username, setUsername] = useState("");
-  const [password, setPassword] = useState("");
-  const [isSubmitting, setIsSubmitting] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  const nextPath = useMemo(() => {
-    const candidate = searchParams.get("next") || "/simulate";
-    return candidate.startsWith("/") ? candidate : "/simulate";
-  }, [searchParams]);
-
-  const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    setError(null);
-    setIsSubmitting(true);
-
-    try {
-      const response = await login({ username, password });
-      setAuthSession(response.access_token, response.user);
-      clearPendingTransaction();
-
-      // Resolve server-side user state once after login for consistency.
-      try {
-        const me = await fetchCurrentUser();
-        setAuthSession(response.access_token, me);
-      } catch {
-        // Keep login response user as fallback if /auth/me check fails.
-      }
-
-      const role = response.user.role;
-      const redirectPath =
-        role !== "admin" && nextPath.startsWith("/admin")
-          ? "/dashboard"
-          : nextPath;
-
-      navigate(redirectPath, { replace: true });
-    } catch (err) {
-      setError(getErrorMessage(err));
-    } finally {
-      setIsSubmitting(false);
-    }
-  };
+  const [signupUsername, setSignupUsername] = useState("");
+  const [signupPassword, setSignupPassword] = useState("");
+  const [signupEmail, setSignupEmail] = useState("");
+  const [signupDisplayName, setSignupDisplayName] = useState("");
+  const [isSignupSubmitting, setIsSignupSubmitting] = useState(false);
+  const [signupError, setSignupError] = useState<string | null>(null);
 
   const handleLogout = () => {
     clearAuthSession();
     clearPendingTransaction();
-    navigate("/login", { replace: true });
+    navigate("/signup", { replace: true });
+  };
+
+  const handleSignupSubmit = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    setSignupError(null);
+    setIsSignupSubmitting(true);
+
+    try {
+      const response = await signup({
+        username: signupUsername,
+        password: signupPassword,
+        email: signupEmail,
+        displayName: signupDisplayName || undefined,
+      });
+      setAuthSession(response.access_token, response.user);
+      clearPendingTransaction();
+
+      try {
+        const me = await fetchCurrentUser();
+        setAuthSession(response.access_token, me);
+      } catch {
+        // Keep signup response user as fallback if /auth/me check fails.
+      }
+
+      navigate("/dashboard", { replace: true });
+    } catch (err) {
+      setSignupError(getErrorMessage(err));
+    } finally {
+      setIsSignupSubmitting(false);
+    }
   };
 
   const continuePath =
@@ -114,16 +108,9 @@ export default function Login() {
       <div className="container py-8 sm:py-10">
         <div className="max-w-xl mx-auto section-card space-y-6">
           <div className="space-y-2">
-            <h1 className="text-2xl sm:text-3xl font-bold">Sign In</h1>
+            <h1 className="text-2xl sm:text-3xl font-bold">Sign Up</h1>
             <p className="text-sm text-muted-foreground">
-              Login is required for simulator, history, and admin access.
-            </p>
-          </div>
-
-          <div className="rounded-md border border-border bg-muted/30 p-3 text-sm space-y-1">
-            <p className="font-medium">Accounts</p>
-            <p className="text-muted-foreground">
-              No default demo accounts are configured. Use your real username and password.
+              Create a user account. Your email is used for Medium Risk alert and OTP emails.
             </p>
           </div>
 
@@ -152,47 +139,75 @@ export default function Login() {
             </div>
           )}
 
-          <form className="space-y-4" onSubmit={handleSubmit}>
+          <form className="space-y-4" onSubmit={handleSignupSubmit}>
             <div className="space-y-2">
-              <Label htmlFor="username">Username</Label>
+              <Label htmlFor="signup-display-name">Display Name (optional)</Label>
               <Input
-                id="username"
-                value={username}
-                onChange={(event) => setUsername(event.target.value)}
+                id="signup-display-name"
+                value={signupDisplayName}
+                onChange={(event) => setSignupDisplayName(event.target.value)}
+                autoComplete="name"
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="signup-username">Username</Label>
+              <Input
+                id="signup-username"
+                value={signupUsername}
+                onChange={(event) => setSignupUsername(event.target.value)}
                 autoComplete="username"
                 required
               />
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="password">Password</Label>
+              <Label htmlFor="signup-email">Email</Label>
               <Input
-                id="password"
-                type="password"
-                value={password}
-                onChange={(event) => setPassword(event.target.value)}
-                autoComplete="current-password"
+                id="signup-email"
+                type="email"
+                value={signupEmail}
+                onChange={(event) => setSignupEmail(event.target.value)}
+                autoComplete="email"
                 required
               />
             </div>
 
-            {error && (
+            <div className="space-y-2">
+              <Label htmlFor="signup-password">Password</Label>
+              <Input
+                id="signup-password"
+                type="password"
+                value={signupPassword}
+                onChange={(event) => setSignupPassword(event.target.value)}
+                autoComplete="new-password"
+                minLength={6}
+                required
+              />
+            </div>
+
+            {signupError && (
               <div className="rounded-md border border-danger/30 bg-danger-muted p-3 text-sm text-danger">
-                {error}
+                {signupError}
               </div>
             )}
 
-            <Button type="submit" className="w-full" disabled={isSubmitting}>
-              {isSubmitting ? "Signing in..." : "Sign In"}
+            <Button
+              type="submit"
+              variant="outline"
+              className="w-full"
+              disabled={isSignupSubmitting}
+            >
+              {isSignupSubmitting ? "Creating account..." : "Create Account"}
             </Button>
           </form>
 
           <div className="border-t border-border pt-5">
             <p className="text-sm text-muted-foreground mb-3">
-              Don&apos;t have an account yet?
+              Already have an account?
             </p>
-            <Button asChild variant="outline" className="w-full">
-              <Link to="/signup">Go to Sign Up</Link>
+            <Button asChild className="w-full">
+              <Link to="/login">Go to Sign In</Link>
             </Button>
           </div>
         </div>

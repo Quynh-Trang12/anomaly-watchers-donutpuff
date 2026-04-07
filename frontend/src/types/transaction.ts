@@ -1,6 +1,12 @@
 export type TransactionType = "PAYMENT" | "TRANSFER" | "CASH OUT" | "CASH IN" | "DEBIT";
 
-export type Decision = "APPROVE" | "STEP_UP" | "BLOCK" | "APPROVE_AFTER_STEPUP" | "BLOCK_STEPUP_FAILED";
+export type Decision =
+  | "APPROVE"
+  | "STEP_UP"
+  | "BLOCK"
+  | "APPROVE_AFTER_STEPUP"
+  | "BLOCK_STEPUP_FAILED"
+  | "PENDING_ADMIN_REVIEW";
 
 export interface Transaction {
   id: string;
@@ -17,12 +23,16 @@ export interface Transaction {
   isFlaggedFraud: 0 | 1;
   riskScore: number;
   decision: Decision;
+  status?: "approved" | "blocked" | "pending_review";
+  reviewState?: "PENDING_ADMIN_REVIEW" | "REVIEWED_APPROVED" | "REVIEWED_BLOCKED";
   reasons: string[];
   backendRiskLevel?: "Low" | "Medium" | "High";
   backendExplanation?: string;
   modelScores?: Record<string, number>;
   modelsUsed?: string[];
   createdAt: string;
+  ownerId?: string;
+  ownerUsername?: string;
 }
 
 export interface AdminSettings {

@@ -5,6 +5,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { fetchAllTransactions } from "@/api";
 import { 
   AdminSettings, 
   DEFAULT_ADMIN_SETTINGS,
@@ -15,8 +16,6 @@ import {
   saveAdminSettings, 
   addAuditLogEntry,
   getAdminAuditLog,
-  getTransactions,
-  exportTransactions
 } from "@/lib/storage";
 import { GlobalTrafficMonitor } from "@/components/admin/GlobalTrafficMonitor";
 import { ReviewQueue } from "@/components/admin/ReviewQueue";
@@ -39,16 +38,32 @@ export default function Admin() {
   const [settings, setSettings] = useState<AdminSettings>(DEFAULT_ADMIN_SETTINGS);
   const [originalSettings, setOriginalSettings] = useState<AdminSettings>(DEFAULT_ADMIN_SETTINGS);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
+  const [isLoadingTransactions, setIsLoadingTransactions] = useState(true);
+  const [transactionsError, setTransactionsError] = useState<string | null>(null);
   const [auditLog, setAuditLog] = useState<{ changedAt: string; field: string; oldValue: any; newValue: any; actor: string }[]>([]);
   const [validationError, setValidationError] = useState<string | null>(null);
+
+  const refreshTransactions = async () => {
+    setIsLoadingTransactions(true);
+
+    try {
+      const records = await fetchAllTransactions();
+      setTransactions(records);
+      setTransactionsError(null);
+    } catch {
+      setTransactionsError("Could not load global transactions from backend.");
+    } finally {
+      setIsLoadingTransactions(false);
+    }
+  };
 
   useEffect(() => {
     const loadedSettings = getAdminSettings();
     setSettings(loadedSettings);
     setOriginalSettings(loadedSettings);
-    setTransactions(getTransactions());
     setAuditLog(getAdminAuditLog());
     headingRef.current?.focus();
+    void refreshTransactions();
   }, []);
 
   const hasChanges = JSON.stringify(settings) !== JSON.stringify(originalSettings);
@@ -96,12 +111,43 @@ export default function Admin() {
     });
   };
 
-  const refreshTransactions = () => {
-    setTransactions(getTransactions());
-  };
-
   const handleExport = (format: "json" | "csv") => {
-    const data = exportTransactions(format);
+    const data =
+      format === "json"
+        ? JSON.stringify(transactions, null, 2)
+        : [
+            [
+              "id",
+              "ownerUsername",
+              "step",
+              "type",
+              "amount",
+              "nameOrig",
+              "nameDest",
+              "isFraud",
+              "isFlaggedFraud",
+              "riskScore",
+              "decision",
+              "createdAt",
+            ].join(","),
+            ...transactions.map((t) =>
+              [
+                t.id,
+                t.ownerUsername || "",
+                t.step,
+                t.type,
+                t.amount,
+                t.nameOrig,
+                t.nameDest,
+                t.isFraud,
+                t.isFlaggedFraud,
+                t.riskScore,
+                t.decision,
+                t.createdAt,
+              ].join(","),
+            ),
+          ].join("\n");
+
     const blob = new Blob([data], { type: format === "json" ? "application/json" : "text/csv" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
@@ -159,21 +205,13 @@ export default function Admin() {
               </span>
             </div>
             <p className="text-muted-foreground">
-              Configure thresholds, rules, and view monitoring metrics.
-              Not production authentication.
+              Review high-risk transactions, monitor system behavior, and manage
+              the review queue.
             </p>
           </header>
 
-          <Tabs defaultValue="thresholds" className="space-y-6">
+          <Tabs defaultValue="review" className="space-y-6">
             <TabsList className="w-full justify-start overflow-x-auto flex-wrap h-auto gap-1 p-1">
-              <TabsTrigger value="thresholds" className="gap-2">
-                <Settings className="h-4 w-4" aria-hidden="true" />
-                Thresholds
-              </TabsTrigger>
-              <TabsTrigger value="rules" className="gap-2">
-                <Shield className="h-4 w-4" aria-hidden="true" />
-                Rules
-              </TabsTrigger>
               <TabsTrigger value="review" className="gap-2">
                 <ClipboardCheck className="h-4 w-4" aria-hidden="true" />
                 Review Queue
@@ -347,6 +385,11 @@ export default function Admin() {
 
             {/* Review Queue Tab */}
             <TabsContent value="review" className="space-y-6">
+              {transactionsError && (
+                <div className="rounded-lg border border-danger/30 bg-danger-muted px-4 py-3 text-sm text-danger">
+                  {transactionsError}
+                </div>
+              )}
               <div className="flex items-center justify-end gap-2">
                 <Button variant="outline" size="sm" onClick={() => handleExport("json")} className="gap-1">
                   <Download className="h-3 w-3" aria-hidden="true" />
@@ -357,7 +400,18 @@ export default function Admin() {
                   Export CSV
                 </Button>
               </div>
-              <ReviewQueue transactions={transactions} onUpdate={refreshTransactions} />
+              {isLoadingTransactions ? (
+                <div className="section-card text-center py-12">
+                  <p className="text-muted-foreground">Loading review queue...</p>
+                </div>
+              ) : (
+                <ReviewQueue
+                  transactions={transactions}
+                  onUpdate={() => {
+                    void refreshTransactions();
+                  }}
+                />
+              )}
             </TabsContent>
 
             {/* Monitoring Tab */}
@@ -454,7 +508,13 @@ export default function Admin() {
 
             {/* Global Traffic Tab */}
             <TabsContent value="traffic">
-              <GlobalTrafficMonitor transactions={transactions} />
+              {isLoadingTransactions ? (
+                <div className="section-card text-center py-12">
+                  <p className="text-muted-foreground">Loading global traffic...</p>
+                </div>
+              ) : (
+                <GlobalTrafficMonitor transactions={transactions} />
+              )}
             </TabsContent>
           </Tabs>
         </div>

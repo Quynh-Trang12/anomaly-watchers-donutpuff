@@ -126,6 +126,7 @@ export function getDecisionLabel(decision: Decision): string {
     BLOCK: "Blocked",
     APPROVE_AFTER_STEPUP: "Approved (After Verification)",
     BLOCK_STEPUP_FAILED: "Blocked (Verification Failed)",
+    PENDING_ADMIN_REVIEW: "Pending Admin Review",
   };
   return labels[decision];
 }

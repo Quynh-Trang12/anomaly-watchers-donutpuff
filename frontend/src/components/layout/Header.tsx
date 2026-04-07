@@ -1,25 +1,42 @@
-import { Link, useLocation } from "react-router-dom";
+import { Link, useLocation, useNavigate } from "react-router-dom";
 import { Shield, Menu, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useState } from "react";
-import { getCurrentRole } from "@/lib/auth";
+import {
+  clearAuthSession,
+  getCurrentRole,
+  getCurrentUser,
+  isAuthenticated,
+} from "@/lib/auth";
+import { clearPendingTransaction } from "@/lib/storage";
 
 const BASE_NAV_LINKS = [
   { to: "/", label: "Home" },
-  { to: "/dashboard", label: "Live Dashboard" },
+  { to: "/dashboard", label: "Dashboard" },
   { to: "/simulate", label: "Simulator" },
   { to: "/history", label: "History" },
 ];
 
 export function Header() {
   const location = useLocation();
+  const navigate = useNavigate();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const role = getCurrentRole();
+  const user = getCurrentUser();
+  const authed = isAuthenticated();
 
-  const navLinks =
-    role === "admin"
+  const navLinks = authed
+    ? role === "admin"
       ? [...BASE_NAV_LINKS, { to: "/admin", label: "Admin" }]
-      : BASE_NAV_LINKS;
+      : BASE_NAV_LINKS
+    : [{ to: "/", label: "Home" }];
+
+  const handleLogout = () => {
+    clearAuthSession();
+    clearPendingTransaction();
+    navigate("/login", { replace: true });
+    setMobileMenuOpen(false);
+  };
 
   return (
     <header className="sticky top-0 z-50 bg-card border-b border-border">
@@ -62,12 +79,23 @@ export function Header() {
         </ul>
 
         <div className="hidden md:flex items-center gap-2">
-          <span className="text-xs px-2 py-1 rounded bg-muted text-muted-foreground uppercase">
-            Role: {role}
-          </span>
-          <Button asChild size="sm" variant="outline">
-            <Link to="/login">Switch Role</Link>
-          </Button>
+          {authed && user ? (
+            <>
+              <span className="text-xs px-2 py-1 rounded bg-muted text-muted-foreground">
+                {user.username} ({role.toUpperCase()})
+              </span>
+              <Button asChild size="sm" variant="outline">
+                <Link to="/login">Switch User</Link>
+              </Button>
+              <Button size="sm" variant="ghost" onClick={handleLogout}>
+                Logout
+              </Button>
+            </>
+          ) : (
+            <Button asChild size="sm" variant="outline">
+              <Link to="/login">Login</Link>
+            </Button>
+          )}
         </div>
 
         <Button
@@ -95,7 +123,7 @@ export function Header() {
         >
           <ul className="container py-2 space-y-1" role="list">
             <li className="px-3 pt-2 pb-1 text-xs text-muted-foreground uppercase">
-              Role: {role}
+              {authed && user ? `User: ${user.username} (${role})` : "Not signed in"}
             </li>
             {navLinks.map((link) => (
               <li key={link.to}>
@@ -115,19 +143,41 @@ export function Header() {
                 </Link>
               </li>
             ))}
-            <li>
-              <Link
-                to="/login"
-                className="block px-3 py-2 rounded-md text-sm font-medium text-muted-foreground hover:text-foreground hover:bg-muted"
-                onClick={() => setMobileMenuOpen(false)}
-              >
-                Switch Role
-              </Link>
-            </li>
+            {authed ? (
+              <>
+                <li>
+                  <Link
+                    to="/login"
+                    className="block px-3 py-2 rounded-md text-sm font-medium text-muted-foreground hover:text-foreground hover:bg-muted"
+                    onClick={() => setMobileMenuOpen(false)}
+                  >
+                    Switch User
+                  </Link>
+                </li>
+                <li>
+                  <button
+                    type="button"
+                    className="w-full text-left px-3 py-2 rounded-md text-sm font-medium text-muted-foreground hover:text-foreground hover:bg-muted"
+                    onClick={handleLogout}
+                  >
+                    Logout
+                  </button>
+                </li>
+              </>
+            ) : (
+              <li>
+                <Link
+                  to="/login"
+                  className="block px-3 py-2 rounded-md text-sm font-medium text-muted-foreground hover:text-foreground hover:bg-muted"
+                  onClick={() => setMobileMenuOpen(false)}
+                >
+                  Login
+                </Link>
+              </li>
+            )}
           </ul>
         </nav>
       )}
     </header>
   );
 }
-

@@ -12,17 +12,34 @@ import Admin from "./pages/Admin";
 import Result from "./pages/Result";
 import NotFound from "./pages/NotFound";
 import Login from "./pages/Login";
+import Signup from "./pages/Signup";
 import { Toaster } from "@/components/ui/sonner";
 import Dashboard from "./components/Dashboard";
-import { getCurrentRole } from "@/lib/auth";
+import { getCurrentRole, isAuthenticated } from "@/lib/auth";
+
+function RequireAuth({ children }: { children: JSX.Element }) {
+  const location = useLocation();
+
+  if (!isAuthenticated()) {
+    const next = encodeURIComponent(`${location.pathname}${location.search}`);
+    return <Navigate to={`/login?next=${next}`} replace />;
+  }
+
+  return children;
+}
 
 function RequireAdmin({ children }: { children: JSX.Element }) {
   const location = useLocation();
+
+  if (!isAuthenticated()) {
+    const next = encodeURIComponent(`${location.pathname}${location.search}`);
+    return <Navigate to={`/login?next=${next}`} replace />;
+  }
+
   const role = getCurrentRole();
 
   if (role !== "admin") {
-    const next = encodeURIComponent(location.pathname);
-    return <Navigate to={`/login?next=${next}`} replace />;
+    return <Navigate to="/dashboard" replace />;
   }
 
   return children;
@@ -34,10 +51,39 @@ function App() {
       <Routes>
         <Route path="/" element={<Landing />} />
         <Route path="/login" element={<Login />} />
-        <Route path="/dashboard" element={<Dashboard />} />
-        <Route path="/simulate" element={<Simulate />} />
-        <Route path="/result" element={<Result />} />
-        <Route path="/history" element={<History />} />
+        <Route path="/signup" element={<Signup />} />
+        <Route
+          path="/dashboard"
+          element={
+            <RequireAuth>
+              <Dashboard />
+            </RequireAuth>
+          }
+        />
+        <Route
+          path="/simulate"
+          element={
+            <RequireAuth>
+              <Simulate />
+            </RequireAuth>
+          }
+        />
+        <Route
+          path="/result"
+          element={
+            <RequireAuth>
+              <Result />
+            </RequireAuth>
+          }
+        />
+        <Route
+          path="/history"
+          element={
+            <RequireAuth>
+              <History />
+            </RequireAuth>
+          }
+        />
         <Route
           path="/admin"
           element={

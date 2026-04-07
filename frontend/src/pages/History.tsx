@@ -8,14 +8,23 @@ import { RiskScore } from "@/components/ui/RiskScore";
 import { GroundTruthBadge } from "@/components/ui/GroundTruthBadge";
 import { TransactionDatasetView } from "@/components/result/TransactionDatasetView";
 import { TransactionListItem } from "@/components/history/TransactionListItem";
+import { fetchMyTransactions } from "@/api";
 import { Transaction, TransactionType, Decision, TRANSACTION_TYPES } from "@/types/transaction";
-import { getTransactions } from "@/lib/storage";
 import { getEventTypeLabel, formatCurrency, EVENT_TYPE_LABELS } from "@/lib/eventTypes";
+import { getCurrentRole } from "@/lib/auth";
 import { Filter, X, AlertCircle, User } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 
+function displayReasonByRole(reason: string, isAdmin: boolean): string {
+  if (isAdmin) return reason;
+  return reason.replace(/\bRandom Forest\b/gi, "Model");
+}
+
 export default function History() {
+  const isAdmin = getCurrentRole() === "admin";
   const [transactions, setTransactions] = useState<Transaction[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [typeFilter, setTypeFilter] = useState<TransactionType | "ALL">("ALL");
   const [decisionFilter, setDecisionFilter] = useState<Decision | "ALL">("ALL");
   const [flaggedFilter, setFlaggedFilter] = useState<"ALL" | "YES" | "NO">("ALL");
@@ -24,8 +33,22 @@ export default function History() {
   const headingRef = useRef<HTMLHeadingElement>(null);
 
   useEffect(() => {
-    setTransactions(getTransactions().reverse());
-    headingRef.current?.focus();
+    const loadTransactions = async () => {
+      setIsLoading(true);
+      setLoadError(null);
+
+      try {
+        const records = await fetchMyTransactions();
+        setTransactions(records);
+      } catch {
+        setLoadError("Could not load your transaction history from backend.");
+      } finally {
+        setIsLoading(false);
+        headingRef.current?.focus();
+      }
+    };
+
+    void loadTransactions();
   }, []);
 
   const filteredTransactions = useMemo(() => {
@@ -109,6 +132,9 @@ export default function History() {
                     <SelectItem value="APPROVE">Approved</SelectItem>
                     <SelectItem value="STEP_UP">Step-Up</SelectItem>
                     <SelectItem value="BLOCK">Blocked</SelectItem>
+                    <SelectItem value="PENDING_ADMIN_REVIEW">
+                      Pending Admin Review
+                    </SelectItem>
                     <SelectItem value="APPROVE_AFTER_STEPUP">Approved (After Step-Up)</SelectItem>
                     <SelectItem value="BLOCK_STEPUP_FAILED">Blocked (Step-Up Failed)</SelectItem>
                   </SelectContent>
@@ -145,7 +171,15 @@ export default function History() {
           </div>
 
           {/* Results */}
-          {filteredTransactions.length === 0 ? (
+          {isLoading ? (
+            <div className="section-card text-center py-12">
+              <p className="text-muted-foreground">Loading your transactions...</p>
+            </div>
+          ) : loadError ? (
+            <div className="section-card text-center py-12">
+              <p className="text-danger">{loadError}</p>
+            </div>
+          ) : filteredTransactions.length === 0 ? (
             <div className="section-card text-center py-12">
               <p className="text-muted-foreground">
                 {transactions.length === 0
@@ -213,7 +247,7 @@ export default function History() {
                   {selectedTransaction.reasons.map((reason, index) => (
                     <li key={index} className="flex items-start gap-2 text-sm">
                       <AlertCircle className="h-4 w-4 text-muted-foreground shrink-0 mt-0.5" aria-hidden="true" />
-                      {reason}
+                      {displayReasonByRole(reason, isAdmin)}
                     </li>
                   ))}
                 </ul>

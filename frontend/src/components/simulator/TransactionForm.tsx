@@ -33,7 +33,6 @@ import {
   getDestinationBalances,
   updateDestinationBalance,
   updateOriginAccount,
-  saveTransaction,
   getAdminSettings,
   setPendingTransaction,
 } from "@/lib/storage";
@@ -42,7 +41,12 @@ import {
   getRiskLevel,
   scoreTransaction,
 } from "@/lib/scoring";
-import { predictPrimary } from "@/api";
+import {
+  createTransaction,
+  predictPrimary,
+  sendUserConfirmationEmail,
+  sendUserOtpEmail,
+} from "@/api";
 import {
   RotateCcw,
   Send,
@@ -64,6 +68,112 @@ function formatBackendRiskLevel(
   return "Low";
 }
 
+function extractApiErrorMessage(error: unknown, fallback: string): string {
+  if (
+    typeof error === "object" &&
+    error !== null &&
+    "response" in error &&
+    typeof (error as any).response === "object"
+  ) {
+    const detail = (error as any).response?.data?.detail;
+    if (typeof detail === "string" && detail.trim().length > 0) {
+      return detail;
+    }
+  }
+
+  if (error instanceof Error && error.message) {
+    return error.message;
+  }
+
+  return fallback;
+}
+
+function normalizeReasonText(value: string): string {
+  return value.replace(/\s+/g, " ").trim();
+}
+
+function appendUniqueReason(reasons: string[], value: string): void {
+  const normalized = normalizeReasonText(value);
+  if (!normalized) return;
+
+  const key = normalized
+    .toLowerCase()
+    .replace(/[.,:;!?]/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+
+  const exists = reasons.some((item) => {
+    const itemKey = normalizeReasonText(item)
+      .toLowerCase()
+      .replace(/[.,:;!?]/g, "")
+      .replace(/\s+/g, " ")
+      .trim();
+    return itemKey === key;
+  });
+
+  if (!exists) {
+    reasons.push(normalized);
+  }
+}
+
+function simplifyModelExplanation(explanation?: string): string {
+  const normalized = normalizeReasonText(explanation ?? "");
+  if (!normalized) return "";
+
+  const sentences = normalized.split(/(?<=[.!?])\s+/);
+  if (sentences.length <= 1) {
+    return normalized;
+  }
+
+  const firstSentence = sentences[0] ?? "";
+  const looksLikeModelSummary =
+    /fraud probability/i.test(firstSentence) && /risk/i.test(firstSentence);
+
+  if (looksLikeModelSummary) {
+    return normalizeReasonText(sentences.slice(1).join(" "));
+  }
+
+  return normalized;
+}
+
+function parseAmountInput(value: string): string {
+  const sanitized = value.replace(/,/g, "").replace(/[^\d.]/g, "");
+  if (!sanitized) return "";
+
+  const firstDotIndex = sanitized.indexOf(".");
+  if (firstDotIndex === -1) return sanitized;
+
+  const integerPart = sanitized.slice(0, firstDotIndex);
+  const decimalPart = sanitized.slice(firstDotIndex + 1).replace(/\./g, "");
+  return `${integerPart}.${decimalPart}`;
+}
+
+function formatAmountDisplay(value: string): string {
+  if (!value) return "";
+
+  const [integerPartRaw, decimalPart] = value.split(".");
+  const integerPart = integerPartRaw || "0";
+  const withCommas = integerPart.replace(/\B(?=(\d{3})+(?!\d))/g, ",");
+
+  if (decimalPart !== undefined) {
+    return `${withCommas}.${decimalPart}`;
+  }
+
+  return withCommas;
+}
+
+type RiskBucket = "low" | "medium" | "high";
+const APP_OTP_CODE = "123456";
+
+function getRiskBucket(
+  riskScore: number,
+  backendRiskLevel?: "Low" | "Medium" | "High",
+): RiskBucket {
+  if (backendRiskLevel === "High" || riskScore >= 70) return "high";
+  if (backendRiskLevel === "Medium" || riskScore >= 35) return "medium";
+  return "low";
+}
+
 export function TransactionForm() {
   const navigate = useNavigate();
   const formRef = useRef<HTMLFormElement>(null);
@@ -82,7 +192,13 @@ export function TransactionForm() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [showProcessingModal, setShowProcessingModal] = useState(false);
   const [showStepUpOTP, setShowStepUpOTP] = useState(false);
+  const [showUserConfirmation, setShowUserConfirmation] = useState(false);
+  const [notificationStatus, setNotificationStatus] = useState<string | null>(
+    null,
+  );
   const [pendingTransactionData, setPendingTransactionData] =
+    useState<Transaction | null>(null);
+  const [pendingMediumTransactionData, setPendingMediumTransactionData] =
     useState<Transaction | null>(null);
 
   const originAccounts = useMemo(() => getOriginAccounts(), []);
@@ -115,6 +231,7 @@ export function TransactionForm() {
 
   // Compute balances
   const amountNum = parseFloat(amount) || 0;
+  const formattedAmount = useMemo(() => formatAmountDisplay(amount), [amount]);
 
   const oldbalanceDest =
     advancedMode && manualOldBalanceDest !== ""
@@ -184,6 +301,13 @@ export function TransactionForm() {
     setErrors({});
   };
 
+  const handleAmountChange = useCallback(
+    (value: string) => {
+      setAmount(parseAmountInput(value));
+    },
+    [setAmount],
+  );
+
   const handleReset = () => {
     setStep(getLastStep() + 1);
     setType("");
@@ -194,50 +318,70 @@ export function TransactionForm() {
     setAllowNegativeBalance(false);
     setManualOldBalanceDest("");
     setErrors({});
+    setShowUserConfirmation(false);
+    setShowStepUpOTP(false);
+    setNotificationStatus(null);
+    setPendingMediumTransactionData(null);
+    setPendingTransactionData(null);
   };
 
   const finalizeTransaction = useCallback(
-    (transaction: Transaction) => {
-      saveTransaction(transaction);
+    async (transaction: Transaction) => {
+      const persistedTransaction = await createTransaction(transaction);
 
       const shouldApplyBalances =
-        transaction.decision === "APPROVE" ||
-        transaction.decision === "APPROVE_AFTER_STEPUP";
+        persistedTransaction.decision === "APPROVE" ||
+        persistedTransaction.decision === "APPROVE_AFTER_STEPUP";
 
       if (shouldApplyBalances) {
-        updateOriginAccount(transaction.nameOrig, transaction.newbalanceOrig);
-        updateDestinationBalance(transaction.nameDest, transaction.newbalanceDest);
+        updateOriginAccount(
+          persistedTransaction.nameOrig,
+          persistedTransaction.newbalanceOrig,
+        );
+        updateDestinationBalance(
+          persistedTransaction.nameDest,
+          persistedTransaction.newbalanceDest,
+        );
       }
 
-      setLastStep(transaction.step);
-      setPendingTransaction(transaction);
+      setLastStep(persistedTransaction.step);
+      setPendingTransaction(persistedTransaction);
       navigate("/result");
     },
     [navigate],
   );
 
   const handleProcessingComplete = useCallback(() => {
-    if (pendingTransactionData) {
-      finalizeTransaction(pendingTransactionData);
-    }
-    setShowProcessingModal(false);
-    setIsSubmitting(false);
+    const persistAndNavigate = async () => {
+      try {
+        if (pendingTransactionData) {
+          await finalizeTransaction(pendingTransactionData);
+        }
+      } catch (error) {
+        setErrors({
+          submit: `Could not save transaction: ${extractApiErrorMessage(
+            error,
+            "Unknown error",
+          )}`,
+        });
+      } finally {
+        setShowProcessingModal(false);
+        setIsSubmitting(false);
+      }
+    };
+
+    void persistAndNavigate();
   }, [finalizeTransaction, pendingTransactionData]);
 
-  const submitVerifiedTransaction = useCallback(async () => {
-    setIsSubmitting(true);
+  const buildTransactionCandidate = useCallback(async (): Promise<Transaction> => {
+    const finalNameDest = computedNameDest;
+    const isFlaggedFraud = computeIsFlaggedFraud(
+      type as TransactionType,
+      amountNum,
+      adminSettings,
+    );
 
     try {
-      const finalNameDest = computedNameDest;
-      const isFlaggedFraud = computeIsFlaggedFraud(
-        type as TransactionType,
-        amountNum,
-        adminSettings,
-      );
-
-      // --- AI INTEGRATION ---
-      // Call the Python backend and map the model-centric response into the demo UX.
-      console.log("Calling Backend API...");
       const apiResponse = await predictPrimary({
         step: step,
         type: type as string,
@@ -248,46 +392,23 @@ export function TransactionForm() {
         newbalanceDest: newbalanceDest,
       });
 
-      // Map Backend Response to Frontend Types
-      // API returns probability as 0-1, we convert to percentage
-      const riskProbability = apiResponse.probability;
-      const riskScore = Math.round(riskProbability * 100);
-      const isFraud = apiResponse.is_fraud;
-      const riskLevel = apiResponse.risk_level;
+      const riskScore = Math.round(apiResponse.probability * 100);
+      const modelReasons: string[] = [];
+      appendUniqueReason(modelReasons, `Risk Level: ${apiResponse.risk_level}`);
 
-      // Keep the demo OTP flow aligned with the Admin threshold settings.
-      // The backend still provides the probability, while the frontend maps
-      // that score into APPROVE / STEP_UP / BLOCK for the simulator UX.
-      let decision: Transaction["decision"] = "APPROVE";
-      if (riskProbability < adminSettings.approveThreshold) {
-        decision = "APPROVE";
-      } else if (riskProbability >= adminSettings.blockThreshold) {
-        decision = "BLOCK";
-      } else {
-        decision = "APPROVE_AFTER_STEPUP";
-      }
-
-      // Create Reasons List — use structured XAI factors from the backend
-      const modelReasons = [
-        `AI Risk Probability: ${riskScore}%`,
-        `Risk Level: ${riskLevel}`,
-      ];
-
-      if (apiResponse.explanation) {
-        modelReasons.push(apiResponse.explanation);
-      }
-
-      // Append structured risk factors from the backend XAI engine
       if (apiResponse.risk_factors && apiResponse.risk_factors.length > 0) {
-        for (const rf of apiResponse.risk_factors) {
-          modelReasons.push(rf.factor);
+        for (const rf of apiResponse.risk_factors.slice(0, 3)) {
+          appendUniqueReason(modelReasons, rf.factor);
         }
+      } else {
+        appendUniqueReason(modelReasons, simplifyModelExplanation(apiResponse.explanation));
       }
 
-      if (isFlaggedFraud)
-        modelReasons.push("Matches Legacy Fraud Patterns (Rule-based)");
+      if (isFlaggedFraud) {
+        appendUniqueReason(modelReasons, "Matches legacy fraud patterns.");
+      }
 
-      const transaction: Transaction = {
+      return {
         id: crypto.randomUUID(),
         step,
         type: type as TransactionType,
@@ -298,29 +419,20 @@ export function TransactionForm() {
         nameDest: finalNameDest,
         oldbalanceDest,
         newbalanceDest,
-        isFraud: isFraud ? 1 : 0,
+        isFraud: apiResponse.is_fraud ? 1 : 0,
         isFlaggedFraud,
-        riskScore: riskScore,
-        decision: decision,
+        riskScore,
+        decision: 'APPROVE',
+        status: 'approved',
         reasons: modelReasons,
-        backendRiskLevel: riskLevel,
+        backendRiskLevel: apiResponse.risk_level,
         backendExplanation: apiResponse.explanation,
         modelScores: apiResponse.model_scores,
         modelsUsed: apiResponse.models_used,
         createdAt: new Date().toISOString(),
       };
-
-      setPendingTransactionData(transaction);
-      setShowProcessingModal(true);
     } catch (error: any) {
-      console.error("API Error:", error);
-      if (error.request && !error.response) {
-        const finalNameDest = computedNameDest;
-        const isFlaggedFraud = computeIsFlaggedFraud(
-          type as TransactionType,
-          amountNum,
-          adminSettings,
-        );
+      if (error?.request && !error?.response) {
         const fallbackResult = scoreTransaction(
           {
             type: type as TransactionType,
@@ -334,7 +446,11 @@ export function TransactionForm() {
           adminSettings,
         );
 
-        const fallbackTransaction: Transaction = {
+        const fallbackRiskLevel = formatBackendRiskLevel(
+          getRiskLevel(fallbackResult.riskScore),
+        );
+
+        return {
           id: crypto.randomUUID(),
           step,
           type: type as TransactionType,
@@ -345,54 +461,28 @@ export function TransactionForm() {
           nameDest: finalNameDest,
           oldbalanceDest,
           newbalanceDest,
-          isFraud: fallbackResult.decision === "BLOCK" ? 1 : 0,
+          isFraud: fallbackResult.decision === 'BLOCK' ? 1 : 0,
           isFlaggedFraud,
           riskScore: Math.round(fallbackResult.riskScore * 100),
-          decision:
-            fallbackResult.decision === "STEP_UP"
-              ? "APPROVE_AFTER_STEPUP"
-              : fallbackResult.decision,
+          decision: 'APPROVE',
+          status: 'approved',
           reasons: [
-            "AI backend unavailable - using local demo risk rules.",
+            'AI backend unavailable - using local demo risk rules.',
             ...fallbackResult.reasons,
           ],
-          backendRiskLevel: formatBackendRiskLevel(
-            getRiskLevel(fallbackResult.riskScore),
-          ),
+          backendRiskLevel: fallbackRiskLevel,
           backendExplanation:
-            "The live backend was unavailable, so the simulator used local rules to keep the demo flow running.",
+            'The live backend was unavailable, so local rules were used for routing.',
           createdAt: new Date().toISOString(),
         };
-
-        setPendingTransactionData(fallbackTransaction);
-        setErrors({});
-        setShowProcessingModal(true);
-
-        return;
       }
 
-      let errorMessage = "Could not connect to the AI backend.";
-
-      if (error.response) {
-        const responseBody = error.response.data;
-        const responseDetail =
-          typeof responseBody === "string"
-            ? responseBody
-            : responseBody?.detail ||
-              responseBody?.message ||
-              JSON.stringify(responseBody);
-
-        errorMessage = `Server Error (${error.response.status}): ${
-          responseDetail || error.response.statusText
-        }`;
-      } else {
-        errorMessage = `Request Error: ${error.message}`;
-      }
-
-      setErrors({
-        submit: errorMessage,
-      });
-      setIsSubmitting(false);
+      const responseDetail =
+        error?.response?.data?.detail ||
+        error?.response?.data?.message ||
+        error?.message ||
+        'Could not connect to the AI backend.';
+      throw new Error(String(responseDetail));
     }
   }, [
     adminSettings,
@@ -407,80 +497,133 @@ export function TransactionForm() {
     type,
   ]);
 
-  const handleStepUpOTPSuccess = useCallback(() => {
-    setShowStepUpOTP(false);
-    setErrors({});
-    submitVerifiedTransaction();
-  }, [submitVerifiedTransaction]);
-
-  const handleStepUpOTPFail = useCallback(() => {
-    setShowStepUpOTP(false);
-    setIsSubmitting(false);
-    setErrors({
-      submit: "OTP verification failed. Transaction was not submitted.",
-    });
+  const queueTransactionForPersistence = useCallback((transaction: Transaction) => {
+    setPendingTransactionData(transaction);
+    setShowProcessingModal(true);
+    setIsSubmitting(true);
   }, []);
 
-  const handleStepUpOTPCancel = useCallback(() => {
-    const finalNameDest = computedNameDest;
-    const isFlaggedFraud = computeIsFlaggedFraud(
-      type as TransactionType,
-      amountNum,
-      adminSettings,
-    );
+  const handleStepUpOTPSuccess = useCallback(() => {
+    if (!pendingMediumTransactionData) return;
 
-    const fallbackResult = scoreTransaction(
-      {
-        type: type as TransactionType,
-        amount: amountNum,
-        oldbalanceOrg,
-        newbalanceOrig,
-        oldbalanceDest,
-        newbalanceDest,
-        isFlaggedFraud,
-      },
-      adminSettings,
-    );
+    const reasons = pendingMediumTransactionData.reasons.includes(
+      'User confirmed transaction and OTP verification passed.',
+    )
+      ? pendingMediumTransactionData.reasons
+      : [
+          ...pendingMediumTransactionData.reasons,
+          'User confirmed transaction and OTP verification passed.',
+        ];
 
-    const blockedTransaction: Transaction = {
-      id: crypto.randomUUID(),
-      step,
-      type: type as TransactionType,
-      amount: amountNum,
-      nameOrig,
-      oldbalanceOrg,
-      newbalanceOrig,
-      nameDest: finalNameDest,
-      oldbalanceDest,
-      newbalanceDest,
-      isFraud: 1,
-      isFlaggedFraud,
-      riskScore: 100,
-      decision: "BLOCK",
-      reasons: ["OTP verification was cancelled", ...fallbackResult.reasons],
-      backendRiskLevel: "High",
-      backendExplanation:
-        "Transaction blocked because OTP verification was cancelled.",
-      createdAt: new Date().toISOString(),
+    const approvedAfterOtp: Transaction = {
+      ...pendingMediumTransactionData,
+      decision: 'APPROVE_AFTER_STEPUP',
+      status: 'approved',
+      reviewState: undefined,
+      reasons,
     };
 
     setShowStepUpOTP(false);
+    setPendingMediumTransactionData(null);
     setErrors({});
-    setIsSubmitting(false);
-    finalizeTransaction(blockedTransaction);
-  }, [
-    adminSettings,
-    amountNum,
-    computedNameDest,
-    finalizeTransaction,
-    nameOrig,
-    newbalanceDest,
-    newbalanceOrig,
-    oldbalanceDest,
-    oldbalanceOrg,
-    step,
-    type,
-  ]);
+    queueTransactionForPersistence(approvedAfterOtp);
+  }, [pendingMediumTransactionData, queueTransactionForPersistence]);
+
+  const handleStepUpOTPFail = useCallback(() => {
+    if (!pendingMediumTransactionData) return;
+
+    const blockedAfterOtp: Transaction = {
+      ...pendingMediumTransactionData,
+      decision: 'BLOCK_STEPUP_FAILED',
+      status: 'blocked',
+      reviewState: undefined,
+      isFraud: 1,
+      reasons: [
+        ...pendingMediumTransactionData.reasons,
+        'OTP verification failed after user confirmation.',
+      ],
+    };
+
+    setShowStepUpOTP(false);
+    setPendingMediumTransactionData(null);
+    setErrors({});
+    queueTransactionForPersistence(blockedAfterOtp);
+  }, [pendingMediumTransactionData, queueTransactionForPersistence]);
+
+  const handleStepUpOTPCancel = useCallback(() => {
+    if (!pendingMediumTransactionData) return;
+
+    const blockedTransaction: Transaction = {
+      ...pendingMediumTransactionData,
+      decision: 'BLOCK',
+      status: 'blocked',
+      reviewState: undefined,
+      isFraud: 1,
+      riskScore: 100,
+      reasons: [
+        ...pendingMediumTransactionData.reasons,
+        'OTP verification was cancelled',
+      ],
+      backendRiskLevel: 'High',
+      backendExplanation:
+        'Transaction blocked because OTP verification was cancelled.',
+    };
+
+    setShowStepUpOTP(false);
+    setPendingMediumTransactionData(null);
+    setErrors({});
+    queueTransactionForPersistence(blockedTransaction);
+  }, [pendingMediumTransactionData, queueTransactionForPersistence]);
+
+  const handleMediumConfirmationYes = useCallback(async () => {
+    if (!pendingMediumTransactionData) return;
+
+    setShowUserConfirmation(false);
+    setErrors({});
+
+    try {
+      await sendUserOtpEmail({
+        otp_code: APP_OTP_CODE,
+        amount: pendingMediumTransactionData.amount,
+        transaction_type: pendingMediumTransactionData.type,
+      });
+      setNotificationStatus('OTP email sent via mail service. Please check inbox.');
+    } catch (error) {
+      setErrors({
+        submit: extractApiErrorMessage(
+          error,
+          'OTP email could not be sent via mail service.',
+        ),
+      });
+      setShowUserConfirmation(true);
+      return;
+    }
+
+    setShowStepUpOTP(true);
+  }, [pendingMediumTransactionData]);
+
+  const handleMediumConfirmationNo = useCallback(() => {
+    if (!pendingMediumTransactionData) return;
+
+    const blockedTransaction: Transaction = {
+      ...pendingMediumTransactionData,
+      decision: 'BLOCK',
+      status: 'blocked',
+      reviewState: undefined,
+      isFraud: 1,
+      reasons: [
+        ...pendingMediumTransactionData.reasons,
+        'User denied transaction during confirmation step.',
+      ],
+      backendExplanation:
+        'Transaction blocked because the user denied ownership.',
+    };
+
+    setShowUserConfirmation(false);
+    setPendingMediumTransactionData(null);
+    setErrors({});
+    queueTransactionForPersistence(blockedTransaction);
+  }, [pendingMediumTransactionData, queueTransactionForPersistence]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -488,7 +631,82 @@ export function TransactionForm() {
     if (!validate()) return;
 
     setErrors({});
-    setShowStepUpOTP(true);
+    setNotificationStatus(null);
+    setIsSubmitting(true);
+
+    try {
+      const candidate = await buildTransactionCandidate();
+      const riskBucket = getRiskBucket(
+        candidate.riskScore,
+        candidate.backendRiskLevel,
+      );
+      const requiresAdminReview = riskBucket === 'high';
+
+      if (requiresAdminReview) {
+        const reasons = [...candidate.reasons];
+
+        if (riskBucket === 'high') {
+          reasons.push('High-risk transaction routed to Admin Review Queue.');
+        }
+
+        queueTransactionForPersistence({
+          ...candidate,
+          decision: 'PENDING_ADMIN_REVIEW',
+          status: 'pending_review',
+          reviewState: 'PENDING_ADMIN_REVIEW',
+          isFraud: 0,
+          reasons,
+        });
+        return;
+      }
+
+      if (riskBucket === 'medium') {
+        try {
+          await sendUserConfirmationEmail({
+            amount: candidate.amount,
+            transaction_type: candidate.type,
+            recipient_account: candidate.nameDest,
+          });
+          setNotificationStatus(
+            'User confirmation email sent via mail service. Please confirm in the flow below.',
+          );
+        } catch (error) {
+          setErrors({
+            submit: extractApiErrorMessage(
+              error,
+              'Could not send user confirmation email via mail service.',
+            ),
+          });
+          setIsSubmitting(false);
+          return;
+        }
+
+        setPendingMediumTransactionData({
+          ...candidate,
+          decision: 'STEP_UP',
+          status: undefined,
+          reviewState: undefined,
+        });
+        setShowUserConfirmation(true);
+        setIsSubmitting(false);
+        return;
+      }
+
+      queueTransactionForPersistence({
+        ...candidate,
+        decision: 'APPROVE',
+        status: 'approved',
+        reviewState: undefined,
+      });
+    } catch (error) {
+      setErrors({
+        submit: extractApiErrorMessage(
+          error,
+          'Could not process transaction decision flow.',
+        ),
+      });
+      setIsSubmitting(false);
+    }
   };
 
   const isValid = type && nameOrig && amountNum > 0 && step >= 1;
@@ -524,12 +742,18 @@ export function TransactionForm() {
           </div>
         )}
 
+        {notificationStatus && (
+          <div className="rounded-lg border border-primary/30 bg-primary/5 p-3 text-sm text-foreground">
+            {notificationStatus}
+          </div>
+        )}
+
         <div className="grid lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)] gap-4 sm:gap-6">
           {/* Left Column - Form */}
           <div className="min-w-0 space-y-4 sm:space-y-6">
             {/* Section 1: WHO - Account Selection with Wallet Preview */}
             <fieldset className="form-fieldset">
-              <legend className="form-legend">1. Who is Sending?</legend>
+              <legend className="form-legend">1. Sender</legend>
 
               <div className="space-y-4">
                 <AccountSelector
@@ -553,9 +777,7 @@ export function TransactionForm() {
 
             {/* Section 2: WHAT - Transaction Type & Amount */}
             <fieldset className="form-fieldset">
-              <legend className="form-legend">
-                2. What Type of Transaction?
-              </legend>
+                <legend className="form-legend">2. Type of Transaction</legend>
 
               <div className="space-y-4">
                 <div className="space-y-2">
@@ -597,11 +819,10 @@ export function TransactionForm() {
                     <DollarSign className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                     <Input
                       id="amount"
-                      type="number"
-                      min={0}
-                      step="0.01"
-                      value={amount}
-                      onChange={(e) => setAmount(e.target.value)}
+                      type="text"
+                      inputMode="decimal"
+                      value={formattedAmount}
+                      onChange={(e) => handleAmountChange(e.target.value)}
                       placeholder="0.00"
                       className="pl-9"
                       aria-describedby={
@@ -619,7 +840,7 @@ export function TransactionForm() {
                       id="amount-hint"
                       className="text-xs text-muted-foreground"
                     >
-                      Enter the transaction amount in USD (simulated)
+                      Enter the transaction amount in USD
                     </p>
                   )}
                 </div>
@@ -628,7 +849,7 @@ export function TransactionForm() {
 
             {/* Section 3: WHERE - Destination (mostly auto-generated) */}
             <fieldset className="form-fieldset">
-              <legend className="form-legend">3. Where is it Going?</legend>
+              <legend className="form-legend">3. To</legend>
 
               <div className="space-y-2">
                 <Label htmlFor="nameDest">Recipient / Merchant</Label>
@@ -793,6 +1014,54 @@ export function TransactionForm() {
         onComplete={handleProcessingComplete}
       />
 
+      {showUserConfirmation && pendingMediumTransactionData && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="user-confirmation-title"
+        >
+          <div className="absolute inset-0 bg-background/80 backdrop-blur-sm" />
+          <div className="relative w-full max-w-lg mx-4 bg-card rounded-xl shadow-xl border border-border p-6 sm:p-8 animate-fade-in space-y-4">
+            <h2
+              id="user-confirmation-title"
+              className="text-xl sm:text-2xl font-bold text-foreground"
+            >
+              User Confirmation Required
+            </h2>
+            <p className="text-sm text-muted-foreground">
+              Medium-risk transaction detected. A confirmation email was sent to
+              the user with the question:
+            </p>
+            <p className="text-sm font-medium rounded-md border border-border bg-muted/30 p-3">
+              Is this transaction being performed by you?
+            </p>
+            <p className="text-xs text-muted-foreground">
+              If the user confirms yes, OTP verification is required. If
+              no, the transaction is blocked immediately.
+            </p>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <Button
+                type="button"
+                variant="destructive"
+                onClick={handleMediumConfirmationNo}
+              >
+                No, this is not me
+              </Button>
+              <Button
+                type="button"
+                onClick={() => {
+                  void handleMediumConfirmationYes();
+                }}
+              >
+                Yes, this is me
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {showStepUpOTP && (
         <div
           className="fixed inset-0 z-50 flex items-center justify-center"
@@ -807,10 +1076,10 @@ export function TransactionForm() {
                 id="otp-precheck-title"
                 className="text-xl sm:text-2xl font-bold text-foreground"
               >
-                Verify Before Submission
+                OTP Verification
               </h2>
               <p className="text-sm text-muted-foreground mt-1">
-                This demo transaction requires OTP verification before it can be processed.
+                Medium-risk transaction was user-confirmed. OTP verification is now required to proceed.
               </p>
             </div>
 
@@ -825,3 +1094,4 @@ export function TransactionForm() {
     </>
   );
 }
+

@@ -40,7 +40,9 @@ export function TransactionListItem({ transaction, onClick, showUserId = false }
             {showUserId && (
               <>
                 <span>•</span>
-                <span className="text-primary font-medium">Current_User</span>
+                <span className="text-primary font-medium">
+                  {transaction.ownerUsername || "unknown_user"}
+                </span>
               </>
             )}
           </div>

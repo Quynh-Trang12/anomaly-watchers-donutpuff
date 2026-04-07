@@ -85,14 +85,23 @@ export function GlobalTrafficMonitor({ transactions }: GlobalTrafficMonitorProps
               <SelectTrigger id="global-decision-filter">
                 <SelectValue />
               </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="ALL">All Decisions</SelectItem>
-                <SelectItem value="APPROVE">Approved</SelectItem>
-                <SelectItem value="STEP_UP">Step-Up</SelectItem>
-                <SelectItem value="BLOCK">Blocked</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
+                <SelectContent>
+                  <SelectItem value="ALL">All Decisions</SelectItem>
+                  <SelectItem value="APPROVE">Approved</SelectItem>
+                  <SelectItem value="STEP_UP">Step-Up</SelectItem>
+                  <SelectItem value="BLOCK">Blocked</SelectItem>
+                  <SelectItem value="PENDING_ADMIN_REVIEW">
+                    Pending Admin Review
+                  </SelectItem>
+                  <SelectItem value="APPROVE_AFTER_STEPUP">
+                    Approved (After OTP)
+                  </SelectItem>
+                  <SelectItem value="BLOCK_STEPUP_FAILED">
+                    Blocked (OTP Failed)
+                  </SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
 
           <div className="space-y-2">
             <Label htmlFor="global-high-risk">High Risk Only</Label>
@@ -141,7 +150,9 @@ export function GlobalTrafficMonitor({ transactions }: GlobalTrafficMonitorProps
                     className="border-b border-border last:border-0 hover:bg-muted/30 cursor-pointer transition-colors"
                     onClick={() => setSelectedTransaction(t)}
                   >
-                    <td className="py-3 px-4 font-mono text-xs text-primary">Current_User</td>
+                    <td className="py-3 px-4 font-mono text-xs text-primary">
+                      {t.ownerUsername || "unknown_user"}
+                    </td>
                     <td className="py-3 px-4 text-xs text-muted-foreground">
                       <div>Hour {t.step}</div>
                       <div>{new Date(t.createdAt).toLocaleDateString()}</div>
@@ -184,11 +195,13 @@ export function GlobalTrafficMonitor({ transactions }: GlobalTrafficMonitorProps
           
           {selectedTransaction && (
             <div className="space-y-6">
-              <div className="flex items-center gap-4 flex-wrap">
-                <div className="flex items-center gap-2 text-sm bg-primary/10 px-2 py-1 rounded">
-                  <span className="text-muted-foreground">User:</span>
-                  <span className="font-mono">Current_User</span>
-                </div>
+                <div className="flex items-center gap-4 flex-wrap">
+                  <div className="flex items-center gap-2 text-sm bg-primary/10 px-2 py-1 rounded">
+                    <span className="text-muted-foreground">User:</span>
+                    <span className="font-mono">
+                      {selectedTransaction.ownerUsername || "unknown_user"}
+                    </span>
+                  </div>
                 <DecisionBadge decision={selectedTransaction.decision} size="md" />
                 <RiskScore score={selectedTransaction.riskScore} showBar={false} size="md" />
               </div>

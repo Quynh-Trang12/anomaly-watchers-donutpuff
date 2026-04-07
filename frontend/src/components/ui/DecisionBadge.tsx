@@ -1,4 +1,11 @@
-import { CheckCircle, AlertTriangle, XCircle, ShieldCheck, ShieldX } from "lucide-react";
+import {
+  CheckCircle,
+  AlertTriangle,
+  XCircle,
+  ShieldCheck,
+  ShieldX,
+  ClipboardCheck,
+} from "lucide-react";
 import { Decision } from "@/types/transaction";
 import { getDecisionLabel } from "@/lib/scoring";
 import { cn } from "@/lib/utils";
@@ -32,6 +39,10 @@ const decisionConfig: Record<Decision, {
   BLOCK_STEPUP_FAILED: {
     className: "badge-block",
     Icon: ShieldX,
+  },
+  PENDING_ADMIN_REVIEW: {
+    className: "badge-stepup",
+    Icon: ClipboardCheck,
   },
 };
 

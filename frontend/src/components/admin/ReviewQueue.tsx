@@ -6,7 +6,7 @@ import { RiskScore } from "@/components/ui/RiskScore";
 import { getEventTypeLabel, formatCurrency } from "@/lib/eventTypes";
 import { CheckCircle, XCircle, AlertTriangle, Lightbulb } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
-import { updateTransaction } from "@/lib/storage";
+import { patchTransaction } from "@/api";
 
 interface ReviewQueueProps {
   transactions: Transaction[];
@@ -16,31 +16,65 @@ interface ReviewQueueProps {
 export function ReviewQueue({ transactions, onUpdate }: ReviewQueueProps) {
   const { toast } = useToast();
 
-  // Filter for grey zone (risk 40-80%) OR unverified status
+  // Review queue contains transactions explicitly routed for admin review.
   const reviewQueue = useMemo(() => {
-    return transactions.filter(t => {
-      const isGreyZone = t.riskScore >= 40 && t.riskScore <= 80;
-      const isUnverified = t.isFraud !== 0 && t.isFraud !== 1;
-      return isGreyZone || isUnverified;
-    });
+    return transactions.filter(
+      (t) =>
+        t.reviewState === "PENDING_ADMIN_REVIEW" ||
+        t.decision === "PENDING_ADMIN_REVIEW",
+    );
   }, [transactions]);
 
-  const handleMarkSafe = (id: string) => {
-    updateTransaction(id, { isFraud: 0 });
-    onUpdate();
-    toast({
-      title: "Marked as Legitimate",
-      description: "Transaction has been labeled as safe.",
-    });
+  const handleMarkSafe = async (transaction: Transaction) => {
+    try {
+      await patchTransaction(transaction.id, {
+        isFraud: 0,
+        decision: "APPROVE",
+        status: "approved",
+        reviewState: "REVIEWED_APPROVED",
+        reasons: [
+          ...transaction.reasons,
+          "Admin approved transaction from review queue.",
+        ],
+      });
+      onUpdate();
+      toast({
+        title: "Approved by Admin",
+        description: "Transaction has been approved from review queue.",
+      });
+    } catch {
+      toast({
+        title: "Update failed",
+        description: "Could not update transaction ground truth on backend.",
+        variant: "destructive",
+      });
+    }
   };
 
-  const handleMarkFraud = (id: string) => {
-    updateTransaction(id, { isFraud: 1 });
-    onUpdate();
-    toast({
-      title: "Marked as Fraud",
-      description: "Transaction has been labeled as confirmed fraud.",
-    });
+  const handleMarkFraud = async (transaction: Transaction) => {
+    try {
+      await patchTransaction(transaction.id, {
+        isFraud: 1,
+        decision: "BLOCK",
+        status: "blocked",
+        reviewState: "REVIEWED_BLOCKED",
+        reasons: [
+          ...transaction.reasons,
+          "Admin blocked transaction from review queue.",
+        ],
+      });
+      onUpdate();
+      toast({
+        title: "Blocked by Admin",
+        description: "Transaction has been blocked from review queue.",
+      });
+    } catch {
+      toast({
+        title: "Update failed",
+        description: "Could not update transaction ground truth on backend.",
+        variant: "destructive",
+      });
+    }
   };
 
   return (
@@ -66,9 +100,7 @@ export function ReviewQueue({ transactions, onUpdate }: ReviewQueueProps) {
             <strong>{reviewQueue.length}</strong> transaction{reviewQueue.length !== 1 ? "s" : ""} pending review
           </span>
         </div>
-        <span className="text-muted-foreground">
-          (Risk 40-80% or unverified)
-        </span>
+                <span className="text-muted-foreground">(High Risk)</span>
       </div>
 
       {/* Queue List */}
@@ -113,7 +145,9 @@ export function ReviewQueue({ transactions, onUpdate }: ReviewQueueProps) {
                           variant="outline"
                           size="sm"
                           className="gap-1 text-success hover:text-success hover:bg-success/10 hover:border-success/30"
-                          onClick={() => handleMarkSafe(t.id)}
+                          onClick={() => {
+                            void handleMarkSafe(t);
+                          }}
                           aria-label="Mark as safe"
                         >
                           <CheckCircle className="h-3.5 w-3.5" aria-hidden="true" />
@@ -123,7 +157,9 @@ export function ReviewQueue({ transactions, onUpdate }: ReviewQueueProps) {
                           variant="outline"
                           size="sm"
                           className="gap-1 text-danger hover:text-danger hover:bg-danger/10 hover:border-danger/30"
-                          onClick={() => handleMarkFraud(t.id)}
+                          onClick={() => {
+                            void handleMarkFraud(t);
+                          }}
                           aria-label="Mark as fraud"
                         >
                           <XCircle className="h-3.5 w-3.5" aria-hidden="true" />

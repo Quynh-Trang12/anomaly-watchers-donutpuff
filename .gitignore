@@ -46,3 +46,7 @@ debug_model.py
 
 # Backend historical models
 backend/trained_models/archive/*
+
+# Backend runtime auth/transaction store
+backend/data/*.json
+backend/data/*.db
