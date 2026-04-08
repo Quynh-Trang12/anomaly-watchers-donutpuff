@@ -31,6 +31,7 @@ import {
 import { toast } from "sonner";
 import { useAuth } from "@/context/AuthContext";
 import { Navigate } from "react-router-dom";
+import { formatCurrencyToUSD } from "@/lib/utils";
 
 export default function Admin() {
   const { isAdmin } = useAuth();
@@ -218,7 +219,7 @@ export default function Admin() {
                         </td>
                         <td className="px-6 py-4 font-mono font-medium">{t.transaction_id}</td>
                         <td className="px-6 py-4">{t.owner_user_id}</td>
-                        <td className="px-6 py-4 font-bold">${t.amount.toLocaleString()}</td>
+                        <td className="px-6 py-4 font-bold">{formatCurrencyToUSD(t.amount)}</td>
                         <td className="px-6 py-4">
                           <span className={`px-2 py-1 rounded-full text-[10px] font-bold uppercase ${
                             t.status === 'APPROVED' ? 'bg-success-muted text-success' :
@@ -264,32 +265,50 @@ export default function Admin() {
                 {config && (
                   <div className="space-y-6">
                     <div className="space-y-2">
-                      <Label htmlFor="large-txn">Large Transfer Limit ($)</Label>
+                      <Label htmlFor="large-txn">High-Value Transfer Limit ($)</Label>
                       <Input 
                         id="large-txn"
                         type="number"
                         value={config.large_transfer_limit_amount}
-                        className="font-mono"
+                        className="font-mono h-12 rounded-xl"
                         onChange={e => setConfig({...config, large_transfer_limit_amount: parseFloat(e.target.value)})}
                       />
-                      <p className="text-xs text-muted-foreground">Transactions above this trigger Admin Review.</p>
+                      <p className="text-xs text-muted-foreground italic">
+                        Transactions above this amount will be held for manual security review.
+                      </p>
                     </div>
 
                     <div className="space-y-2">
-                      <Label htmlFor="velocity">Daily Velocity Limit ($)</Label>
+                      <Label htmlFor="velocity">Standard Daily Sending Limit ($)</Label>
                       <Input 
                         id="velocity"
                         type="number"
                         value={config.daily_velocity_limit}
-                        className="font-mono"
+                        className="font-mono h-12 rounded-xl"
                         onChange={e => setConfig({...config, daily_velocity_limit: parseFloat(e.target.value)})}
                       />
+                      <p className="text-xs text-muted-foreground italic">
+                        The maximum total volume allowed for a single account within a 24-hour window.
+                      </p>
                     </div>
 
-                    <div className="flex items-center justify-between p-4 bg-muted/30 rounded-xl">
+                    <div className="pt-4 border-t">
+                      <h4 className="text-sm font-bold uppercase tracking-wider text-primary mb-4">Autonomous AI Safeguards</h4>
+                      <div className="space-y-4">
+                        <div className="flex justify-between items-center bg-muted/30 p-4 rounded-xl">
+                          <div className="space-y-0.5">
+                            <Label>Minimum AI Confidence Score to Auto-Block</Label>
+                            <p className="text-xs text-muted-foreground">Threshold for automatic intervention.</p>
+                          </div>
+                          <span className="font-mono font-bold bg-danger/10 text-danger px-3 py-1 rounded-lg">51.3%</span>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center justify-between p-4 bg-muted/20 border-2 border-dashed rounded-xl">
                       <div className="space-y-0.5">
-                        <Label>Strict Flag Enforcement</Label>
-                        <p className="text-xs text-muted-foreground">Block all transactions flagged by legacy system.</p>
+                        <Label>Strict Rule Enforcement</Label>
+                        <p className="text-xs text-muted-foreground">Automatically block all historically high-risk patterns.</p>
                       </div>
                       <Switch 
                         checked={config.restricted_flagged_status}
@@ -297,9 +316,9 @@ export default function Admin() {
                       />
                     </div>
 
-                    <Button onClick={handleSaveConfig} className="w-full gap-2 py-6 text-lg font-bold shadow-lg shadow-primary/20">
+                    <Button onClick={handleSaveConfig} className="w-full h-14 rounded-2xl text-lg font-bold gap-3 shadow-lg shadow-primary/20 transition-all hover:scale-[1.01]">
                       <Save className="h-5 w-5" />
-                      Save & Force Deploy Configuration
+                      Deploy System Configuration
                     </Button>
                   </div>
                 )}

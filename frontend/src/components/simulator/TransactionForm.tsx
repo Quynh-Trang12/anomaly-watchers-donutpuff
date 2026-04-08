@@ -14,6 +14,7 @@ import { predictPrimary } from "@/api";
 import { useAuth } from "@/context/AuthContext";
 import { Send, Wallet, ArrowRightLeft, Landmark, CreditCard } from "lucide-react";
 import { toast } from "sonner";
+import { formatCurrencyToUSD } from "@/lib/utils";
 
 export function TransactionForm() {
   const navigate = useNavigate();
@@ -34,6 +35,13 @@ export function TransactionForm() {
       return;
     }
 
+    // Banks do not process transactions smaller than $0.01
+    const decimal_parts = amount.split('.');
+    if (decimal_parts.length > 1 && decimal_parts[1].length > 2) {
+      toast.error("Transactions cannot exceed 2 decimal places (cents).");
+      return;
+    }
+
     setIsSubmitting(true);
     try {
       const result = await predictPrimary({
@@ -47,7 +55,7 @@ export function TransactionForm() {
       });
 
       // Navigate to results with the prediction data
-      navigate("/result", { state: { prediction: result, originalData: { type, amount: amountNum, targetAccount } } });
+      navigate("/result", { state: { prediction: result, originalData: { type, amount: amountNum, targetAccount, oldbalanceOrig: parseFloat(balance) } } });
     } catch (error) {
       toast.error("Prediction engine error. Please check backend.");
     } finally {
@@ -74,7 +82,7 @@ export function TransactionForm() {
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="TRANSFER">P2P Transfer</SelectItem>
-                  <SelectItem value="CASH_OUT">Cash Withdrawal</SelectItem>
+                  <SelectItem value="CASH OUT">Cash Withdrawal</SelectItem>
                   <SelectItem value="PAYMENT">Merchant Payment</SelectItem>
                   <SelectItem value="DEBIT">Bank Debit</SelectItem>
                 </SelectContent>
@@ -100,6 +108,7 @@ export function TransactionForm() {
               <Input 
                 type="number" 
                 placeholder="0.00" 
+                step="0.01"
                 className="h-16 pl-10 text-2xl font-bold rounded-2xl bg-muted/30"
                 value={amount}
                 onChange={e => setAmount(e.target.value)}
@@ -126,7 +135,7 @@ export function TransactionForm() {
           </div>
           <div className="relative">
             <p className="text-primary-foreground/70 text-sm font-medium mb-1 uppercase tracking-wider">Current Balance</p>
-            <h3 className="text-4xl font-black mb-6">${parseFloat(balance).toLocaleString()}</h3>
+            <h3 className="text-4xl font-black mb-6">{formatCurrencyToUSD(parseFloat(balance))}</h3>
             
             <div className="flex items-center gap-4 text-sm font-medium">
               <div className="bg-white/20 px-3 py-1 rounded-full flex items-center gap-2">

@@ -12,6 +12,7 @@ import {
 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
+import { formatCurrencyToUSD } from "@/lib/utils";
 
 export default function History() {
   const { userId } = useAuth();
@@ -86,9 +87,9 @@ export default function History() {
               <div key={t.transaction_id} className="bg-card border rounded-2xl p-6 flex flex-col md:flex-row items-center justify-between gap-6 hover:shadow-md transition-shadow">
                 <div className="flex items-center gap-4 w-full md:w-auto">
                   <div className={`p-3 rounded-xl ${
-                    t.type === 'TRANSFER' || t.type === 'CASH_OUT' ? 'bg-danger/10 text-danger' : 'bg-success/10 text-success'
+                    t.type === 'TRANSFER' || t.type === 'CASH OUT' ? 'bg-danger/10 text-danger' : 'bg-success/10 text-success'
                   }`}>
-                    {t.type === 'TRANSFER' || t.type === 'CASH_OUT' ? <ArrowUpRight className="h-6 w-6" /> : <ArrowDownLeft className="h-6 w-6" />}
+                    {t.type === 'TRANSFER' || t.type === 'CASH OUT' ? <ArrowUpRight className="h-6 w-6" /> : <ArrowDownLeft className="h-6 w-6" />}
                   </div>
                   <div>
                     <h4 className="font-bold text-lg">{t.type.replace(/_/g, ' ')}</h4>
@@ -109,9 +110,9 @@ export default function History() {
 
                 <div className="text-right w-full md:w-auto">
                   <h3 className={`text-xl font-black ${
-                    t.type === 'TRANSFER' || t.type === 'CASH_OUT' ? 'text-foreground' : 'text-success'
+                    t.type === 'TRANSFER' || t.type === 'CASH OUT' ? 'text-foreground' : 'text-success'
                   }`}>
-                    {t.type === 'TRANSFER' || t.type === 'CASH_OUT' ? '-' : '+'}${t.amount.toLocaleString()}
+                    {t.type === 'TRANSFER' || t.type === 'CASH OUT' ? '-' : '+'}{formatCurrencyToUSD(t.amount)}
                   </h3>
                   <p className="text-xs text-muted-foreground">{new Date(t.timestamp).toLocaleString()}</p>
                 </div>

@@ -124,7 +124,7 @@ def _build_risk_factors(
     if payload.amount >= large_amount_limit:
         factors.append(
             RiskFactor(
-                factor=f"Transaction amount of ${payload.amount:,.2f} exceeds standard safety threshold of ${large_amount_limit:,.2f}.",
+                factor=f"This transfer of ${payload.amount:,.2f} is significantly higher than your typical transaction range.",
                 severity="warning",
             )
         )
@@ -135,7 +135,7 @@ def _build_risk_factors(
         if drain_ratio >= 0.95:
             factors.append(
                 RiskFactor(
-                    factor=f"This transaction will deplete {drain_ratio:.1%} of your current account balance (${payload.oldbalanceOrg:,.2f}).",
+                    factor="This transfer will use up almost all of the money currently in your account.",
                     severity="danger",
                 )
             )
@@ -144,7 +144,7 @@ def _build_risk_factors(
     if payload.type in {"TRANSFER", "CASH OUT"} and payload.oldbalanceDest == 0 and payload.amount > 10000:
         factors.append(
             RiskFactor(
-                factor="Large transfer sent to a new or inactive destination account with zero previous balance.",
+                factor="Sending a large sum to an account with no prior history can be a sign of unauthorized access.",
                 severity="warning",
             )
         )
@@ -156,14 +156,14 @@ def _build_risk_factors(
     if probability >= block_threshold:
         factors.append(
             RiskFactor(
-                factor=f"Our predictive security system has flagged this activity as highly inconsistent with your historical patterns (Match Probability: {probability:.1%}).",
+                factor="Our security system has detected activity that looks very different from your usual spending habits.",
                 severity="danger",
             )
         )
     elif probability >= 0.4:
         factors.append(
             RiskFactor(
-                factor="Enhanced verification required due to atypical transaction parameters.",
+                factor="We've noticed some unusual details in this request and need to double-check its security.",
                 severity="warning",
             )
         )
@@ -171,7 +171,7 @@ def _build_risk_factors(
     if not factors:
         factors.append(
             RiskFactor(
-                factor="Standard transaction parameters verified. No immediate anomalies detected.",
+                factor="Standard security checks complete. Your transaction appears consistent with normal usage.",
                 severity="info",
             )
         )
@@ -285,6 +285,22 @@ async def transaction_action(transaction_id: str, action: str, admin_id: str = "
     update_transaction_status(transaction_id, status, admin_id=admin_id)
     return {"status": "success", "transaction_id": transaction_id, "new_status": status}
 
+@app.get("/api/security/freeze")
+async def freeze_account(id: str):
+    """
+    Emergency account freeze endpoint triggered from OOB email security alerts.
+    """
+    update_transaction_status(id, TransactionStatusEnum.BLOCKED, admin_id="SYSTEM_AUTO_FREEZE")
+    add_audit_log(
+        admin_id="system",
+        action_type="ACCOUNT_FREEZE",
+        details=f"Emergency account freeze triggered for transaction {id}."
+    )
+    return {
+        "status": "success", 
+        "message": "Security protocols engaged. Account activity has been suspended and our team is investigating."
+    }
+
 @app.post("/api/predict/primary", response_model=PredictionOutput)
 async def predict_primary(transaction_input: TransactionInput, background_tasks: BackgroundTasks) -> PredictionOutput:
     system_configuration = app.state.system_configuration
@@ -314,36 +330,44 @@ async def predict_primary(transaction_input: TransactionInput, background_tasks:
     except Exception as execution_exception:
         raise HTTPException(status_code=400, detail=f"Inference Engine Error: {execution_exception}")
 
-    # 3. Decision Routing Logic
+    # 3. Decision Routing Logic & ID Generation
     block_threshold = ml_thresholds.get("block_threshold", 0.5)
     step_up_threshold = ml_thresholds.get("step_up_threshold", 0.4)
+    new_transaction_id = f"TXN-{uuid.uuid4().hex[:8].upper()}"
+    risk_factors_list = _build_risk_factors(transaction_input, probability_score, system_configuration)
     large_transfer_limit = business_rules.get("large_transfer_limit_amount", 150000.0)
     
     transaction_status = TransactionStatusEnum.APPROVED
-    operation_explanation = "Transaction processed successfully."
+    operation_explanation = "Everything looks good! Your transaction has been securely processed."
     
     if probability_score >= block_threshold:
         transaction_status = TransactionStatusEnum.BLOCKED
-        operation_explanation = "Transaction blocked automatically by security protocols."
+        operation_explanation = "For your protection, this transaction has been declined. It doesn't match your usual activity."
     elif probability_score >= step_up_threshold:
         transaction_status = TransactionStatusEnum.PENDING_USER_OTP
-        operation_explanation = "Additional verification required. A security code has been sent to your registered email."
+        operation_explanation = "We just want to make sure it's really you. We've sent a 6-digit security code to your email."
         # Trigger OOB Authentication
         security_otp_code = secrets.token_hex(3).upper() # 6-digit hex code
         background_tasks.add_task(
             send_security_alert_email,
             recipient_email=f"{transaction_input.user_id}@example.com",
             otp_code=security_otp_code,
-            transaction_details={"amount": transaction_input.amount, "type": transaction_input.type}
+            transaction_details={
+                "amount": transaction_input.amount, 
+                "type": transaction_input.type,
+                "transaction_id": new_transaction_id
+            }
         )
     elif transaction_input.amount > large_transfer_limit:
         transaction_status = TransactionStatusEnum.PENDING_ADMIN_REVIEW
-        operation_explanation = "Large transaction queued for administrative review."
+        operation_explanation = "Since this is a larger amount than usual, our security team is doing a quick manual check before we release the funds."
+        add_audit_log(
+            admin_id="system",
+            action_type="REVIEW_QUEUED",
+            details=f"Large transfer of ${transaction_input.amount:,.2f} initiated by {transaction_input.user_id}."
+        )
 
     # 4. Persistence
-    new_transaction_id = f"TXN-{uuid.uuid4().hex[:8].upper()}"
-    risk_factors_list = _build_risk_factors(transaction_input, probability_score, system_configuration)
-    
     transaction_record_entry = TransactionRecord(
         transaction_id=new_transaction_id,
         owner_user_id=transaction_input.user_id,

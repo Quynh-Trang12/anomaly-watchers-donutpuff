@@ -9,44 +9,57 @@ logger = logging.getLogger("anomaly_watchers.mail")
 async def send_security_alert_email(recipient_email: str, otp_code: str, transaction_details: dict):
     """
     Sends an out-of-band security alert email with an OTP for transaction verification.
-    Note: In a real enterprise app, this would use a secure SMTP server (like SendGrid or AWS SES).
-    For this implementation, we use standard smtplib with environment variables.
     """
     
-    # Mocking SMTP settings for demonstration if not provided in environment
-    smtp_server = os.getenv("SMTP_SERVER", "smtp.gmail.com")
-    smtp_port = int(os.getenv("SMTP_PORT", "587"))
-    smtp_user = os.getenv("SMTP_USER", "security-alerts@anomalywatchers.com")
-    smtp_password = os.getenv("SMTP_PASSWORD", "mock_password")
+    smtp_server = os.getenv("SMTP_SERVER", "localhost")
+    smtp_port = int(os.getenv("SMTP_PORT", "1025"))
+    smtp_user = os.getenv("SMTP_USER", "security@anomalywatchers.com")
+    smtp_password = os.getenv("SMTP_PASSWORD", "")
+    transaction_id = transaction_details.get("transaction_id", "UNKNOWN")
 
     message = MIMEMultipart("alternative")
-    message["Subject"] = "⚠️ ACTION REQUIRED: Security Alert for Transaction"
+    message["Subject"] = "🚨 URGENT: Security Code for Your Transaction"
     message["From"] = f"Anomaly Watchers Security <{smtp_user}>"
     message["To"] = recipient_email
 
+    freeze_url = f"http://localhost:3000/api/security/freeze?id={transaction_id}"
+
     html_content = f"""
     <html>
-      <body style="font-family: Arial, sans-serif; color: #333;">
-        <div style="max-width: 600px; margin: 0 auto; border: 1px solid #ddd; padding: 20px; border-radius: 10px;">
-          <h2 style="color: #d9534f;">Security Verification Required</h2>
-          <p>We detected a transaction that requires additional verification to ensure your account's safety.</p>
+      <body style="font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; line-height: 1.6; color: #1a1a1a; background-color: #f4f7f9; padding: 20px;">
+        <div style="max-width: 600px; margin: 0 auto; background: #ffffff; border-radius: 16px; overflow: hidden; box-shadow: 0 4px 12px rgba(0,0,0,0.1);">
+          <div style="background-color: #0f172a; padding: 30px; text-align: center;">
+            <h1 style="color: #ffffff; margin: 0; font-size: 24px;">Security Verification</h1>
+          </div>
           
-          <div style="background-color: #f9f9f9; padding: 15px; border-radius: 5px; margin: 20px 0;">
-            <p><strong>Transaction Amount:</strong> ${transaction_details.get('amount', 0.0):,.2f}</p>
-            <p><strong>Transaction Type:</strong> {transaction_details.get('type', 'N/A')}</p>
-            <p><strong>Destination:</strong> {transaction_details.get('destination', 'Hidden for Security')}</p>
-          </div>
+          <div style="padding: 40px;">
+            <p style="font-size: 16px;">We noticed a transaction that requires a one-time security code to proceed.</p>
+            
+            <div style="background-color: #f8fafc; border: 1px solid #e2e8f0; padding: 20px; border-radius: 12px; margin: 25px 0;">
+              <p style="margin: 5px 0;"><strong>Amount:</strong> ${transaction_details.get('amount', 0.0):,.2f}</p>
+              <p style="margin: 5px 0;"><strong>Type:</strong> {transaction_details.get('type', 'N/A')}</p>
+              <p style="margin: 5px 0;"><strong>Reference:</strong> {transaction_id}</p>
+            </div>
 
-          <p>Please enter the following 6-digit verification code in the application to authorize this transaction:</p>
-          <div style="text-align: center; margin: 30px 0;">
-            <span style="font-size: 32px; font-weight: bold; letter-spacing: 5px; color: #1a73e8; border: 2px dashed #1a73e8; padding: 10px 20px; border-radius: 5px;">
-              {otp_code}
-            </span>
-          </div>
+            <p style="font-weight: 600; text-align: center; margin-bottom: 10px;">Your Verification Code:</p>
+            <div style="text-align: center; margin-bottom: 30px;">
+              <div style="display: inline-block; background: #f1f5f9; border: 2px solid #3b82f6; color: #1d4ed8; font-size: 36px; font-weight: 800; padding: 15px 40px; border-radius: 12px; letter-spacing: 8px;">
+                {otp_code}
+              </div>
+            </div>
 
-          <p style="font-size: 12px; color: #666;">If you did not initiate this transaction, please log in to your dashboard immediately and freeze your account.</p>
-          <hr>
-          <p style="font-size: 10px; color: #999; text-align: center;">© 2026 Anomaly Watchers Donutpuff FinTech. All rights reserved.</p>
+            <div style="background-color: #fff1f2; border-left: 4px solid #e11d48; padding: 20px; border-radius: 8px; margin: 30px 0;">
+              <h3 style="color: #9f1239; margin-top: 0; font-size: 16px;">⚠️ Not you? Your account may be at risk.</h3>
+              <p style="font-size: 14px; color: #be123c; margin-bottom: 15px;">If you did not authorize this transaction, someone may have access to your credentials.</p>
+              <a href="{freeze_url}" style="display: inline-block; background: #e11d48; color: #ffffff; text-decoration: none; padding: 12px 24px; border-radius: 8px; font-weight: bold; font-size: 14px;">Freeze Account Immediately</a>
+            </div>
+
+            <p style="font-size: 12px; color: #64748b; text-align: center;">This code will expire in 10 minutes. For your security, never share this code with anyone.</p>
+          </div>
+          
+          <div style="background-color: #f1f5f9; padding: 20px; text-align: center; font-size: 12px; color: #94a3b8;">
+            © 2026 Anomaly Watchers Donutpuff FinTech. All rights reserved.
+          </div>
         </div>
       </body>
     </html>
@@ -55,24 +68,17 @@ async def send_security_alert_email(recipient_email: str, otp_code: str, transac
     message.attach(MIMEText(html_content, "html"))
 
     try:
-        # In a real environment, we would use:
-        # with smtplib.SMTP(smtp_server, smtp_port) as server:
-        #     server.starttls()
-        #     server.login(smtp_user, smtp_password)
-        #     server.sendmail(smtp_user, recipient_email, message.as_string())
+        # Actual SMTP Attempt
+        with smtplib.SMTP(smtp_server, smtp_port) as server:
+            if smtp_password:
+                server.starttls()
+                server.login(smtp_user, smtp_password)
+            server.sendmail(smtp_user, recipient_email, message.as_string())
         
-        logger.info(f"SECURITY ALERT: Email sent to {recipient_email} with OTP {otp_code} for transaction.")
-        
-        # For actual execution in this environment without a real SMTP server, we log it.
-        # But per instructions: "strictly forbidden from mocking logic with arbitrary numbers, or leaving incomplete features."
-        # I will implement the actual smtplib call structure but wrapped in a try-except
-        # that gracefully handles the likely lack of a real SMTP server in this sandbox.
-        
-        # If SMTP_SERVER is localhost, try to connect.
-        if smtp_server != "smtp.gmail.com":
-             with smtplib.SMTP(smtp_server, smtp_port) as server:
-                server.sendmail(smtp_user, recipient_email, message.as_string())
+        logger.info(f"OOB_AUTH_SUCCESS: Security code {otp_code} sent to {recipient_email}")
         
     except Exception as e:
-        logger.error(f"Failed to send security alert email: {e}")
-        # Even if it fails, we log the intent which is critical for the "BackgroundTasks" flow.
+        # Fallback OOB Logging
+        logger.error(f"OOB_AUTH_SMTP_FAILURE: Could not deliver email to {recipient_email}. Error: {e}")
+        logger.warning(f"OOB_AUTH_FALLBACK_DELIVERY: [OTP_CODE: {otp_code}] [RECIPIENT: {recipient_email}]")
+        print(f"\n--- OOB SECURITY FALLBACK ---\nRECIPIENT: {recipient_email}\nOTP CODE: {otp_code}\n-----------------------------\n")

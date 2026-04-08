@@ -12,10 +12,12 @@ import {
   AlertTriangle,
   Mail,
   CheckCircle2,
-  XCircle
+  XCircle,
+  Wallet
 } from "lucide-react";
 import { OTPChallenge } from "@/components/result/OTPChallenge";
 import { toast } from "sonner";
+import { formatCurrencyToUSD } from "@/lib/utils";
 
 export default function Result() {
   const location = useLocation();
@@ -27,7 +29,7 @@ export default function Result() {
   useEffect(() => {
     const data = location.state?.prediction as PredictionOutput;
     if (!data) {
-      navigate("/");
+      navigate("/simulate");
       return;
     }
     setPrediction(data);
@@ -49,6 +51,10 @@ export default function Result() {
   };
 
   if (!prediction) return null;
+
+  const originalData = location.state?.originalData;
+  const oldbalanceOrig = originalData?.oldbalanceOrig || 0;
+  const amount = originalData?.amount || 0;
 
   const isBlocked = prediction.status === "BLOCKED" || state === "REJECTED";
   const isApproved = prediction.status === "APPROVED" || state === "VERIFIED";
@@ -80,6 +86,23 @@ export default function Result() {
                "Verification Required"}
             </h1>
             <p className="text-muted-foreground text-lg">{prediction.explanation}</p>
+          </div>
+
+          {/* New Balance Card */}
+          <div className="bg-muted/50 border rounded-3xl p-6 flex flex-col md:flex-row md:items-center justify-between gap-4">
+            <div className="flex items-center gap-4">
+              <div className="p-3 bg-primary/10 rounded-2xl text-primary">
+                <Wallet className="h-6 w-6" />
+              </div>
+              <div>
+                <p className="text-sm text-muted-foreground uppercase tracking-wider font-bold">New Available Balance</p>
+                <h2 className="text-2xl font-black">{formatCurrencyToUSD(oldbalanceOrig - amount)}</h2>
+              </div>
+            </div>
+            <div className="text-right">
+              <p className="text-[10px] text-muted-foreground uppercase tracking-widest font-bold">Transaction Reference</p>
+              <p className="font-mono text-sm font-medium">{prediction.transaction_id}</p>
+            </div>
           </div>
 
           {/* OTP Challenge Component */}
@@ -146,7 +169,7 @@ export default function Result() {
               </Link>
             </Button>
             <Button asChild size="lg" className="flex-1 h-14 rounded-2xl gap-2 font-bold shadow-lg shadow-primary/20">
-              <Link to="/">
+              <Link to="/simulate">
                 <ArrowLeft className="h-5 w-5" />
                 Return to Wallet
               </Link>

@@ -1,11 +1,17 @@
 import React from "react";
 import { Link } from "react-router-dom";
-import { useAuth } from "../../context/AuthContext";
-import { Shield, User, Power, LayoutDashboard, History, Settings } from "lucide-react";
+import { useAuth, MOCK_USERS } from "../../context/AuthContext";
+import { Shield, User, Power, LayoutDashboard, History, Settings, Users } from "lucide-react";
+import { 
+  DropdownMenu, 
+  DropdownMenuContent, 
+  DropdownMenuItem, 
+  DropdownMenuTrigger 
+} from "../ui/dropdown-menu";
 import { Button } from "../ui/button";
 
 export const Navbar: React.FC = () => {
-  const { role, setRole, isAdmin } = useAuth();
+  const { role, setRole, isAdmin, userId, setUserId } = useAuth();
 
   return (
     <nav className="border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 sticky top-0 z-50">
@@ -21,20 +27,20 @@ export const Navbar: React.FC = () => {
           </Link>
           
           <div className="hidden md:flex items-center gap-1">
-            <Button variant="ghost" asChild className="gap-2">
-              <Link to="/">
+            <Button variant="ghost" asChild className="gap-2 font-medium">
+              <Link to="/simulate">
                 <LayoutDashboard className="h-4 w-4" />
-                Dashboard
+                Wallet
               </Link>
             </Button>
-            <Button variant="ghost" asChild className="gap-2">
+            <Button variant="ghost" asChild className="gap-2 font-medium">
               <Link to="/history">
                 <History className="h-4 w-4" />
                 History
               </Link>
             </Button>
             {isAdmin && (
-              <Button variant="ghost" asChild className="gap-2">
+              <Button variant="ghost" asChild className="gap-2 font-medium">
                 <Link to="/admin">
                   <Shield className="h-4 w-4" />
                   Admin Console
@@ -46,15 +52,34 @@ export const Navbar: React.FC = () => {
 
         <div className="flex items-center gap-4">
           <div className="flex items-center bg-muted p-1 rounded-full gap-1">
-            <Button 
-              size="sm" 
-              variant={role === "USER" ? "default" : "ghost"}
-              className="rounded-full h-8 px-4"
-              onClick={() => setRole("USER")}
-            >
-              <User className="h-4 w-4 mr-2" />
-              User
-            </Button>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button 
+                  size="sm" 
+                  variant={role === "USER" ? "default" : "ghost"}
+                  className="rounded-full h-8 px-4 gap-2"
+                >
+                  <User className="h-4 w-4" />
+                  {role === "USER" ? userId : "User View"}
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-48 rounded-xl p-2">
+                {MOCK_USERS.map((user) => (
+                  <DropdownMenuItem 
+                    key={user.id} 
+                    className="rounded-lg gap-2 cursor-pointer"
+                    onClick={() => {
+                      setRole("USER");
+                      setUserId(user.id);
+                    }}
+                  >
+                    <User className="h-4 w-4" />
+                    {user.name} ({user.id})
+                  </DropdownMenuItem>
+                ))}
+              </DropdownMenuContent>
+            </DropdownMenu>
+
             <Button 
               size="sm" 
               variant={role === "ADMIN" ? "default" : "ghost"}
