@@ -17,6 +17,7 @@ export interface TransactionInput {
   oldbalanceDest: number;
   newbalanceDest: number;
   user_id: string;
+  destination_account_id: string;
 }
 
 export interface PredictionOutput {
@@ -26,8 +27,6 @@ export interface PredictionOutput {
   status: TransactionStatus;
   explanation?: string;
   risk_factors: RiskFactor[];
-  models_used: string[];
-  model_scores: Record<string, number>;
   transaction_id: string;
 }
 
@@ -72,7 +71,7 @@ export const getConfiguration = async (): Promise<ConfigurationResponse> => {
   return response.data;
 };
 
-export const updateConfiguration = async (data: BusinessRules): Promise<any> => {
+export const updateConfiguration = async (data: BusinessRules): Promise<{ status: string; message: string }> => {
   const response = await axios.put(`${API_BASE_URL}/configuration`, data);
   return response.data;
 };
@@ -92,7 +91,7 @@ export const getUserTransactions = async (userId: string): Promise<TransactionRe
   return response.data;
 };
 
-export const updateTransactionStatus = async (transactionId: string, action: "approve" | "block", adminId: string = "admin_1"): Promise<any> => {
+export const updateTransactionStatus = async (transactionId: string, action: "approve" | "block", adminId: string = "admin_1"): Promise<{ status: string; transaction_id: string; new_status: string }> => {
   const response = await axios.post(`${API_BASE_URL}/transactions/${transactionId}/action?action=${action}&admin_id=${adminId}`);
   return response.data;
 };
@@ -100,4 +99,18 @@ export const updateTransactionStatus = async (transactionId: string, action: "ap
 export const healthCheck = async () => {
   const response = await axios.get(`${API_BASE_URL}/health`);
   return response.data;
+};
+
+export const getUserBalance = async (userId: string): Promise<{ user_id: string; balance: number }> => {
+  const response = await axios.get(`${API_BASE_URL}/users/${userId}/balance`);
+  return response.data;
+};
+
+export const getActiveThresholds = async (): Promise<{ block_threshold: number; step_up_threshold: number }> => {
+  const response = await axios.get(`${API_BASE_URL}/configuration/thresholds`);
+  return response.data;
+};
+
+export const notifyAdminQueueOverflow = async (queue_size: number): Promise<void> => {
+  await axios.post(`${API_BASE_URL}/admin/notify/queue_overflow`, { queue_size });
 };

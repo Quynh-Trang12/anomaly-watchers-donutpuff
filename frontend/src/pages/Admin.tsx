@@ -13,7 +13,8 @@ import {
   updateTransactionStatus,
   TransactionRecord,
   AuditLogEntry,
-  BusinessRules
+  BusinessRules,
+  notifyAdminQueueOverflow
 } from "@/api";
 import { 
   Settings, 
@@ -86,9 +87,19 @@ export default function Admin() {
     }
   };
 
+
+
   const pendingReview = useMemo(() => 
     transactions.filter(t => t.status === "PENDING_ADMIN_REVIEW"), 
   [transactions]);
+
+  useEffect(() => {
+    if (pendingReview.length > 10) {
+      notifyAdminQueueOverflow(pendingReview.length).catch(error => {
+        console.error("Failed to notify admin of queue overflow:", error);
+      });
+    }
+  }, [pendingReview.length]);
 
   if (!isAdmin) {
     return <Navigate to="/" replace />;
@@ -149,7 +160,7 @@ export default function Admin() {
                     <div className="flex justify-between items-start mb-4">
                       <div>
                         <span className="text-xs font-bold text-muted-foreground tracking-wider uppercase">{t.transaction_id}</span>
-                        <h3 className="text-xl font-bold mt-1">${t.amount.toLocaleString()}</h3>
+                        <h3 className="text-xl font-bold mt-1">{formatCurrencyToUSD(t.amount)}</h3>
                       </div>
                       <div className="bg-warning-muted text-warning px-3 py-1 rounded-full text-xs font-bold">
                         REVIEW REQ

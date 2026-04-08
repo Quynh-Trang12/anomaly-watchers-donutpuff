@@ -1,5 +1,5 @@
 import { useMemo } from "react";
-import { formatCurrency } from "@/lib/eventTypes";
+import { formatCurrencyToUSD } from "@/lib/utils";
 import { cn } from "@/lib/utils";
 import { Wallet, TrendingDown, TrendingUp, AlertTriangle } from "lucide-react";
 
@@ -45,7 +45,7 @@ export function WalletWidget({
         <div className="flex items-center justify-between">
           <span className="text-sm text-muted-foreground">Current Balance</span>
           <span className="text-xl font-bold font-mono text-foreground">
-            {formatCurrency(currentBalance)}
+            {formatCurrencyToUSD(currentBalance)}
           </span>
         </div>
 
@@ -74,7 +74,7 @@ export function WalletWidget({
                 )}
               >
                 {isIncrease ? "+" : "-"}
-                {formatCurrency(amount)}
+                {formatCurrencyToUSD(amount)}
               </span>
             </div>
 
@@ -105,7 +105,7 @@ export function WalletWidget({
                           : "text-foreground",
                   )}
                 >
-                  {formatCurrency(previewBalance)}
+                  {formatCurrencyToUSD(previewBalance)}
                 </span>
               </div>
             </div>

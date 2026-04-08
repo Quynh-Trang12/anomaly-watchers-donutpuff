@@ -1,7 +1,7 @@
 import React from "react";
 import { Link } from "react-router-dom";
 import { useAuth, MOCK_USERS } from "../../context/AuthContext";
-import { Shield, User, Power, LayoutDashboard, History, Settings, Users } from "lucide-react";
+import { Shield, User, Power, LayoutDashboard, History, Settings, Users, Activity } from "lucide-react";
 import { 
   DropdownMenu, 
   DropdownMenuContent, 
@@ -27,6 +27,12 @@ export const Navbar: React.FC = () => {
           </Link>
           
           <div className="hidden md:flex items-center gap-1">
+            <Button variant="ghost" asChild className="gap-2 font-medium">
+              <Link to="/dashboard">
+                <Activity className="h-4 w-4" />
+                Monitor
+              </Link>
+            </Button>
             <Button variant="ghost" asChild className="gap-2 font-medium">
               <Link to="/simulate">
                 <LayoutDashboard className="h-4 w-4" />

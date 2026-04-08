@@ -10,13 +10,15 @@ import {
   CartesianGrid,
   Tooltip,
   ResponsiveContainer,
-  AreaChart,
-  Area,
+  LineChart,
+  Line,
   Cell,
-  PieChart,
-  Pie,
+  ScatterChart,
+  Scatter,
+  ZAxis,
+  ReferenceLine,
 } from "recharts";
-import { predictPrimary, TransactionInput, PredictionOutput } from "../api";
+import { predictPrimary, TransactionInput, PredictionOutput, getActiveThresholds } from "../api";
 import {
   AlertTriangle,
   ShieldCheck,
@@ -24,7 +26,10 @@ import {
   Play,
   Square,
   TrendingUp,
+  Download
 } from "lucide-react";
+import { formatCurrencyToUSD } from "@/lib/utils";
+import { toast } from "sonner";
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -61,11 +66,14 @@ interface LivePoint {
   time: string;
   risk: number;
   isFraud: boolean;
+  amount: number;
+  status: string;
 }
 
 interface Stats {
-  safe: number;
-  fraud: number;
+  approved: number;
+  blocked: number;
+  pending: number;
   total: number;
 }
 
@@ -98,11 +106,24 @@ const StatCard: React.FC<{
 // Dashboard Component
 // ---------------------------------------------------------------------------
 const Dashboard: React.FC = () => {
-  const [stats, setStats] = useState<Stats>({ safe: 0, fraud: 0, total: 0 });
+  const [stats, setStats] = useState<Stats>({ approved: 0, blocked: 0, pending: 0, total: 0 });
   const [liveData, setLiveData] = useState<LivePoint[]>([]);
   const [isSimulating, setIsSimulating] = useState(false);
   const [currentRisk, setCurrentRisk] = useState(0);
   const [lastResult, setLastResult] = useState<PredictionOutput | null>(null);
+  const [thresholds, setThresholds] = useState({ block_threshold: 0.5, step_up_threshold: 0.4 });
+
+  useEffect(() => {
+    const fetchThresholds = async () => {
+      try {
+        const data = await getActiveThresholds();
+        setThresholds(data);
+      } catch (error) {
+        console.error("Failed to fetch thresholds:", error);
+      }
+    };
+    fetchThresholds();
+  }, []);
 
   // Generate a realistic fake transaction
   const generateTransaction = useCallback((): TransactionInput => {
@@ -112,25 +133,27 @@ const Dashboard: React.FC = () => {
     if (isFraudBurst && Math.random() > 0.3) {
       // Fraud-like transaction: CASH OUT draining account
       return {
-        step: 1,
         type: "CASH OUT",
         amount: 90_000 + Math.random() * 50_000,
         oldbalanceOrg: 90_000 + Math.random() * 50_000,
         newbalanceOrig: 0,
         oldbalanceDest: 0,
         newbalanceDest: 0,
+        user_id: "user_1",
+        destination_account_id: "user_2"
       };
     }
 
     // Normal transaction
     return {
-      step: 1,
       type: "PAYMENT",
       amount: Math.random() * 500,
       oldbalanceOrg: 5_000 + Math.random() * 1_000,
       newbalanceOrig: 4_500 + Math.random() * 1_000,
       oldbalanceDest: 0,
       newbalanceDest: 0,
+      user_id: "user_1",
+      destination_account_id: "user_2"
     };
   }, []);
 
@@ -147,8 +170,9 @@ const Dashboard: React.FC = () => {
           setLastResult(result);
 
           setStats((prev) => ({
-            safe: prev.safe + (result.is_fraud ? 0 : 1),
-            fraud: prev.fraud + (result.is_fraud ? 1 : 0),
+            approved: prev.approved + (result.status === "APPROVED" ? 1 : 0),
+            blocked: prev.blocked + (result.status === "BLOCKED" ? 1 : 0),
+            pending: prev.pending + (result.status.startsWith("PENDING") ? 1 : 0),
             total: prev.total + 1,
           }));
 
@@ -161,6 +185,8 @@ const Dashboard: React.FC = () => {
                 time: new Date().toLocaleTimeString(),
                 risk: result.probability,
                 isFraud: result.is_fraud,
+                amount: fakeInput.amount,
+                status: result.status
               },
             ];
             if (next.length > MAX_LIVE_POINTS) next.shift();
@@ -177,14 +203,28 @@ const Dashboard: React.FC = () => {
 
   // Chart data
   const distributionData = [
-    { name: "Safe", count: stats.safe },
-    { name: "Fraud", count: stats.fraud },
+    { name: "Approved", count: stats.approved },
+    { name: "Blocked", count: stats.blocked },
+    { name: "Pending", count: stats.pending },
   ];
 
-  const pieData = [
-    { name: "Safe", value: stats.safe || 1, fill: "#0f766e" },
-    { name: "Fraud", value: stats.fraud || 0, fill: "#ef4444" },
-  ];
+
+
+  const handleExportLiveData = () => {
+    const csv_header = "Timestamp,Amount,Risk Probability,Status,Is Fraud\n";
+    const csv_rows = liveData.map(point => 
+      `"${point.time}",${point.amount},${point.risk},${point.status},${point.isFraud}`
+    ).join("\n");
+    
+    const csv_blob = new Blob([csv_header + csv_rows], { type: "text/csv" });
+    const download_url = URL.createObjectURL(csv_blob);
+    const anchor_element = document.createElement("a");
+    anchor_element.href = download_url;
+    anchor_element.download = `AnomalyWatchers_LiveStream_${new Date().toISOString()}.csv`;
+    anchor_element.click();
+    URL.revokeObjectURL(download_url);
+    toast.success("Live stream data exported as CSV.");
+  };
 
   const riskColor =
     currentRisk > 0.7
@@ -208,7 +248,7 @@ const Dashboard: React.FC = () => {
               Live Risk Monitor
             </h1>
             <p className="text-muted-foreground mt-1">
-              Real-time fraud detection stream — XGBoost + Heuristic Engine
+              Real-time fraud detection stream — Random Forest + Heuristic Engine
             </p>
           </div>
 
@@ -228,6 +268,15 @@ const Dashboard: React.FC = () => {
                 {isSimulating ? "System Active" : "System Standby"}
               </motion.span>
             </AnimatePresence>
+
+            <Button
+              onClick={handleExportLiveData}
+              variant="outline"
+              className="gap-2"
+              disabled={liveData.length === 0}
+            >
+              <Download className="w-4 h-4" /> Export CSV
+            </Button>
 
             <Button
               onClick={() => setIsSimulating(!isSimulating)}
@@ -257,15 +306,15 @@ const Dashboard: React.FC = () => {
             index={0}
           />
           <StatCard
-            label="Fraud Detected"
+            label="Security Alerts"
             value={
               <motion.span
-                key={stats.fraud}
+                key={stats.blocked}
                 initial={{ scale: 1.3 }}
                 animate={{ scale: 1 }}
                 className="text-danger"
               >
-                {stats.fraud}
+                {stats.blocked}
               </motion.span>
             }
             icon={<AlertTriangle className="w-6 h-6 text-danger" />}
@@ -299,7 +348,7 @@ const Dashboard: React.FC = () => {
 
         {/* Charts Grid */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-          {/* Live Probability Stream */}
+          {/* Capital Velocity Stream */}
           <motion.div
             className="section-card"
             initial={{ opacity: 0, x: -20 }}
@@ -307,22 +356,17 @@ const Dashboard: React.FC = () => {
             transition={{ duration: 0.5, delay: 0.2 }}
           >
             <div className="mb-6">
-              <h2 className="text-lg font-bold text-foreground">
-                Live Fraud Probability
+              <h2 className="text-lg font-bold text-foreground flex items-center gap-2">
+                <TrendingUp className="w-5 h-5 text-primary" />
+                Capital Velocity
               </h2>
               <p className="text-sm text-muted-foreground">
-                Real-time probability stream of incoming transactions
+                Financial flow tracking across system time-steps
               </p>
             </div>
             <div className="h-[300px] w-full">
               <ResponsiveContainer>
-                <AreaChart data={liveData}>
-                  <defs>
-                    <linearGradient id="colorRisk" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%" stopColor="#ef4444" stopOpacity={0.3} />
-                      <stop offset="95%" stopColor="#ef4444" stopOpacity={0} />
-                    </linearGradient>
-                  </defs>
+                <LineChart data={liveData}>
                   <CartesianGrid
                     strokeDasharray="3 3"
                     vertical={false}
@@ -330,7 +374,7 @@ const Dashboard: React.FC = () => {
                   />
                   <XAxis dataKey="time" hide />
                   <YAxis
-                    domain={[0, 1]}
+                    tickFormatter={(value: number) => `$${value > 1000 ? (value / 1000).toFixed(1) + 'k' : value.toFixed(0)}`}
                     tick={{
                       fontSize: 12,
                       fill: "hsl(var(--muted-foreground))",
@@ -345,20 +389,19 @@ const Dashboard: React.FC = () => {
                       color: "hsl(var(--card-foreground))",
                     }}
                     formatter={(value: number) => [
-                      `${(value * 100).toFixed(1)}%`,
-                      "Risk",
+                      formatCurrencyToUSD(value),
+                      "Transaction Amount",
                     ]}
                   />
-                  <Area
+                  <Line
                     type="monotone"
-                    dataKey="risk"
-                    stroke="#ef4444"
-                    fillOpacity={1}
-                    fill="url(#colorRisk)"
+                    dataKey="amount"
+                    stroke="#3b82f6"
                     strokeWidth={2}
+                    dot={false}
                     isAnimationActive={false}
                   />
-                </AreaChart>
+                </LineChart>
               </ResponsiveContainer>
             </div>
           </motion.div>
@@ -410,7 +453,7 @@ const Dashboard: React.FC = () => {
                     {distributionData.map((entry, index) => (
                       <Cell
                         key={`cell-${index}`}
-                        fill={entry.name === "Fraud" ? "#ef4444" : "#0f766e"}
+                        fill={entry.name === "Blocked" ? "#ef4444" : entry.name === "Approved" ? "#0f766e" : "#f59e0b"}
                       />
                     ))}
                   </Bar>
@@ -420,9 +463,9 @@ const Dashboard: React.FC = () => {
           </motion.div>
         </div>
 
-        {/* Live Donut / Pie + XAI Factors */}
+        {/* Risk Heatmap + XAI Factors */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-          {/* Pie Chart */}
+          {/* Risk Heatmap Scatter Chart */}
           <motion.div
             className="section-card"
             initial={{ opacity: 0, y: 20 }}
@@ -432,48 +475,61 @@ const Dashboard: React.FC = () => {
             <div className="mb-6">
               <h2 className="text-lg font-bold text-foreground flex items-center gap-2">
                 <TrendingUp className="w-5 h-5 text-primary" />
-                Classification Ratio
+                Risk Heatmap: Amount vs. Probability
               </h2>
               <p className="text-sm text-muted-foreground">
-                Cumulative fraud vs. legitimate classification
+                Correlation between transaction size and security risk
               </p>
             </div>
-            <div className="h-[280px] w-full flex items-center justify-center">
+            <div className="h-[280px] w-full">
               <ResponsiveContainer>
-                <PieChart>
-                  <Pie
-                    data={pieData}
-                    cx="50%"
-                    cy="50%"
-                    innerRadius={70}
-                    outerRadius={110}
-                    paddingAngle={3}
-                    dataKey="value"
-                    stroke="none"
-                  >
-                    {pieData.map((entry, idx) => (
-                      <Cell key={`pie-${idx}`} fill={entry.fill} />
-                    ))}
-                  </Pie>
-                  <Tooltip
+                <ScatterChart margin={{ top: 20, right: 20, bottom: 20, left: 20 }}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
+                  <XAxis 
+                    type="number" 
+                    dataKey="amount" 
+                    name="Amount" 
+                    unit="$" 
+                    tickFormatter={(val) => `$${val > 1000 ? (val/1000).toFixed(1) + 'k' : val}`}
+                    tick={{ fontSize: 12, fill: "hsl(var(--muted-foreground))" }}
+                  />
+                  <YAxis 
+                    type="number" 
+                    dataKey="risk" 
+                    name="Risk" 
+                    domain={[0, 1]}
+                    tickFormatter={(val) => `${(val * 100).toFixed(0)}%`}
+                    tick={{ fontSize: 12, fill: "hsl(var(--muted-foreground))" }}
+                  />
+                  <ZAxis type="number" range={[50, 400]} />
+                  <Tooltip 
+                    cursor={{ strokeDasharray: '3 3' }}
                     contentStyle={{
                       borderRadius: "8px",
                       border: "1px solid hsl(var(--border))",
                       backgroundColor: "hsl(var(--card))",
                     }}
+                    formatter={(value: number | string, name: string) => {
+                      if (name === "Risk") return [`${(value as number * 100).toFixed(1)}%`, name];
+                      if (name === "Amount") return [formatCurrencyToUSD(value as number), name];
+                      return [value, name];
+                    }}
                   />
-                </PieChart>
+                  <ReferenceLine 
+                    y={thresholds.block_threshold} 
+                    stroke="#ef4444" 
+                    strokeDasharray="5 5"
+                  />
+                  <Scatter name="Transactions" data={liveData} isAnimationActive={false}>
+                    {liveData.map((entry, index) => (
+                      <Cell 
+                        key={`cell-${index}`} 
+                        fill={entry.risk >= thresholds.block_threshold ? "#ef4444" : "#0f766e"} 
+                      />
+                    ))}
+                  </Scatter>
+                </ScatterChart>
               </ResponsiveContainer>
-            </div>
-            <div className="flex justify-center gap-6 mt-2 text-sm">
-              <span className="flex items-center gap-2">
-                <span className="w-3 h-3 rounded-full bg-[#0f766e]" />
-                Safe ({stats.safe})
-              </span>
-              <span className="flex items-center gap-2">
-                <span className="w-3 h-3 rounded-full bg-[#ef4444]" />
-                Fraud ({stats.fraud})
-              </span>
             </div>
           </motion.div>
 

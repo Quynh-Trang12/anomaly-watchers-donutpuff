@@ -13,8 +13,10 @@ import {
   Mail,
   CheckCircle2,
   XCircle,
-  Wallet
+  Wallet,
+  Download
 } from "lucide-react";
+import { useAuth } from "@/context/AuthContext";
 import { OTPChallenge } from "@/components/result/OTPChallenge";
 import { toast } from "sonner";
 import { formatCurrencyToUSD } from "@/lib/utils";
@@ -22,21 +24,54 @@ import { formatCurrencyToUSD } from "@/lib/utils";
 export default function Result() {
   const location = useLocation();
   const navigate = useNavigate();
+  const { userId } = useAuth();
   const [prediction, setPrediction] = useState<PredictionOutput | null>(null);
   const [showOTP, setShowOTP] = useState(false);
   const [state, setState] = useState<"INITIAL" | "VERIFIED" | "REJECTED">("INITIAL");
 
   useEffect(() => {
-    const data = location.state?.prediction as PredictionOutput;
-    if (!data) {
+    const prediction_data = location.state?.prediction as PredictionOutput;
+    if (!prediction_data) {
       navigate("/simulate");
       return;
     }
-    setPrediction(data);
-    if (data.status === "PENDING_USER_OTP") {
+    setPrediction(prediction_data);
+    
+    // Critical: explicitly mount OTP challenge for step-up transactions
+    if (prediction_data.status === "PENDING_USER_OTP") {
       setShowOTP(true);
     }
   }, [location, navigate]);
+
+  const handleExportReport = () => {
+    if (!prediction) return;
+
+    const report_lines = [
+      "=== AnomalyWatchers Transaction Security Report ===",
+      `Transaction ID: ${prediction.transaction_id}`,
+      `Status: ${prediction.status}`,
+      `Risk Level: ${prediction.risk_level}`,
+      `AI Probability Score: ${(prediction.probability * 100).toFixed(2)}%`,
+      `Timestamp: ${new Date().toLocaleString()}`,
+      "",
+      "--- Security Analysis ---",
+      ...prediction.risk_factors.map(factor => `[${factor.severity.toUpperCase()}] ${factor.factor}`),
+      "",
+      "--- System Explanation ---",
+      prediction.explanation ?? "No explanation available.",
+      "",
+      "=== End of Report ==="
+    ];
+    
+    const report_blob = new Blob([report_lines.join("\n")], { type: "text/plain" });
+    const download_url = URL.createObjectURL(report_blob);
+    const anchor_element = document.createElement("a");
+    anchor_element.href = download_url;
+    anchor_element.download = `AnomalyWatchers_${prediction.transaction_id}.txt`;
+    anchor_element.click();
+    URL.revokeObjectURL(download_url);
+    toast.success("Security report exported successfully.");
+  };
 
   const handleOTPSuccess = () => {
     setShowOTP(false);
@@ -106,15 +141,16 @@ export default function Result() {
           </div>
 
           {/* OTP Challenge Component */}
-          {showOTP && (
+          {showOTP && prediction?.status === "PENDING_USER_OTP" && (
             <div className="bg-card border-2 border-primary/20 rounded-3xl p-8 shadow-xl">
-              <div className="flex items-center gap-4 mb-6">
-                <div className="p-3 bg-primary/10 rounded-xl text-primary">
-                  <Mail className="h-6 w-6" />
-                </div>
+              <div className="bg-amber-500/10 border border-amber-500/20 rounded-xl p-4 mb-6 flex items-center gap-3">
+                <Mail className="h-6 w-6 text-amber-500 shrink-0" />
                 <div>
-                  <h3 className="text-xl font-bold">Check your email</h3>
-                  <p className="text-sm text-muted-foreground">We sent a 6-digit code to verify your identity.</p>
+                  <p className="font-bold text-amber-600">Action Required: Check Your Email or Terminal</p>
+                  <p className="text-sm text-muted-foreground mt-0.5">
+                    A 6-digit security code has been sent to <strong>{userId}@example.com</strong>. 
+                    If running locally, check your terminal output for the OTP fallback code.
+                  </p>
                 </div>
               </div>
               <OTPChallenge onSuccess={handleOTPSuccess} onFail={handleOTPFail} />
@@ -162,10 +198,20 @@ export default function Result() {
 
           {/* Actions */}
           <div className="flex flex-col sm:flex-row gap-4">
-            <Button asChild variant="outline" size="lg" className="flex-1 h-14 rounded-2xl gap-2 font-bold">
+            <Button 
+              onClick={handleExportReport} 
+              variant="outline" 
+              size="lg" 
+              className="flex-1 h-14 rounded-2xl gap-2 font-bold"
+              aria-label="Export transaction security report as text file"
+            >
+              <Download className="h-5 w-5" />
+              Export Report
+            </Button>
+            <Button asChild variant="secondary" size="lg" className="flex-1 h-14 rounded-2xl gap-2 font-bold">
               <Link to="/history">
                 <History className="h-5 w-5" />
-                View Activity log
+                View Activity
               </Link>
             </Button>
             <Button asChild size="lg" className="flex-1 h-14 rounded-2xl gap-2 font-bold shadow-lg shadow-primary/20">

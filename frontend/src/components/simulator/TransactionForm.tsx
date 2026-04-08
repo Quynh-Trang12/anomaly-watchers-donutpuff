@@ -1,4 +1,5 @@
 import { useState } from "react";
+import axios from "axios";
 import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -10,54 +11,118 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { predictPrimary } from "@/api";
-import { useAuth } from "@/context/AuthContext";
 import { Send, Wallet, ArrowRightLeft, Landmark, CreditCard } from "lucide-react";
 import { toast } from "sonner";
 import { formatCurrencyToUSD } from "@/lib/utils";
+import { useEffect } from "react";
+import { getUserBalance, predictPrimary, TransactionInput } from "@/api";
+import { useAuth } from "@/context/AuthContext";
 
-export function TransactionForm() {
+interface TransactionFormProps {
+  onTransactionApproved?: () => void;
+  refreshTrigger?: number;
+}
+
+export function TransactionForm({ onTransactionApproved, refreshTrigger }: TransactionFormProps) {
   const navigate = useNavigate();
   const { userId } = useAuth();
   
   const [type, setType] = useState<string>("TRANSFER");
-  const [amount, setAmount] = useState("");
+  const [amountRawValue, setAmountRawValue] = useState<string>("");
+  const [amountDisplayValue, setAmountDisplayValue] = useState<string>("");
   const [targetAccount, setTargetAccount] = useState("");
-  const [balance, setBalance] = useState("450000.00");
+  const [currentBalance, setCurrentBalance] = useState<number>(450000.00);
   const [isSubmitting, setIsSubmitting] = useState(false);
+
+  useEffect(() => {
+    const fetchBalance = async () => {
+      try {
+        const balanceData = await getUserBalance(userId || "user_1");
+        setCurrentBalance(balanceData.balance);
+      } catch (error) {
+        console.error("Failed to fetch balance:", error);
+      }
+    };
+    fetchBalance();
+  }, [userId, refreshTrigger]);
+
+  const handleAmountInputChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+    // Strip everything except digits and one decimal point
+    const raw_input = event.target.value.replace(/[^0-9.]/g, "");
+    
+    // Enforce maximum two decimal places
+    const decimal_parts = raw_input.split(".");
+    if (decimal_parts.length > 2) return; // Reject multiple decimal points
+    if (decimal_parts[1]?.length > 2) return; // Reject more than 2 decimal places
+    
+    setAmountRawValue(raw_input);
+    
+    // Format integer part with commas, preserve decimal portion as-is during typing
+    if (raw_input === "" || raw_input === ".") {
+      setAmountDisplayValue(raw_input);
+      return;
+    }
+    
+    const integer_part = decimal_parts[0];
+    const formatted_integer = integer_part ? parseInt(integer_part, 10).toLocaleString("en-US") : "0";
+    const decimal_suffix = decimal_parts.length === 2 ? "." + decimal_parts[1] : "";
+    setAmountDisplayValue(formatted_integer + decimal_suffix);
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
-    const amountNum = parseFloat(amount);
-    if (isNaN(amountNum) || amountNum <= 0) {
-      toast.error("Please enter a valid amount");
-      return;
-    }
-
-    // Banks do not process transactions smaller than $0.01
-    const decimal_parts = amount.split('.');
-    if (decimal_parts.length > 1 && decimal_parts[1].length > 2) {
-      toast.error("Transactions cannot exceed 2 decimal places (cents).");
+    const parsed_amount = parseFloat(amountRawValue);
+    if (isNaN(parsed_amount) || parsed_amount <= 0) {
+      toast.error("Please enter a valid amount greater than $0.00.");
       return;
     }
 
     setIsSubmitting(true);
     try {
-      const result = await predictPrimary({
-        type,
-        amount: amountNum,
-        oldbalanceOrg: parseFloat(balance),
-        newbalanceOrig: parseFloat(balance) - amountNum,
+      const transaction_payload: TransactionInput = {
+        type: type,
+        amount: parsed_amount,
+        oldbalanceOrg: currentBalance,
+        newbalanceOrig: currentBalance - parsed_amount,
         oldbalanceDest: 0,
-        newbalanceDest: amountNum,
-        user_id: userId
-      });
+        newbalanceDest: parsed_amount,
+        user_id: userId || "user_1",
+        destination_account_id: targetAccount
+      };
+      const prediction_result = await predictPrimary(transaction_payload);
+
+      if (prediction_result.status === "APPROVED") {
+        onTransactionApproved?.();
+      }
 
       // Navigate to results with the prediction data
-      navigate("/result", { state: { prediction: result, originalData: { type, amount: amountNum, targetAccount, oldbalanceOrig: parseFloat(balance) } } });
-    } catch (error) {
-      toast.error("Prediction engine error. Please check backend.");
+      navigate("/result", { 
+        state: { 
+          prediction: prediction_result, 
+          originalData: { 
+            type, 
+            amount: parsed_amount, 
+            targetAccount, 
+            oldbalanceOrig: currentBalance 
+          } 
+        } 
+      });
+    } catch (submission_error: unknown) {
+      if (axios.isAxiosError(submission_error)) {
+        const error_detail = submission_error.response?.data?.detail;
+        if (error_detail?.includes("not found in internal network")) {
+          toast.error("Recipient account does not exist in our network. Please verify the account ID.");
+        } else if (submission_error.response?.status === 422) {
+          toast.error("Transaction data is invalid. Please check your input values.");
+        } else if (submission_error.response?.status === 503) {
+          toast.error("Fraud detection service is temporarily unavailable. Please try again.");
+        } else {
+          toast.error(`Transaction failed: ${error_detail || "An unexpected error occurred."}`);
+        }
+      } else {
+        toast.error("Cannot connect to the AnomalyWatchers server. Is the backend running?");
+      }
     } finally {
       setIsSubmitting(false);
     }
@@ -105,14 +170,15 @@ export function TransactionForm() {
             <Label>Amount (USD)</Label>
             <div className="relative">
               <span className="absolute left-4 top-1/2 -translate-y-1/2 text-xl font-bold text-muted-foreground">$</span>
-              <Input 
-                type="number" 
-                placeholder="0.00" 
-                step="0.01"
-                className="h-16 pl-10 text-2xl font-bold rounded-2xl bg-muted/30"
-                value={amount}
-                onChange={e => setAmount(e.target.value)}
+              <input
+                type="text"
+                inputMode="decimal"
+                placeholder="0.00"
+                value={amountDisplayValue}
+                onChange={handleAmountInputChange}
+                className="h-16 pl-10 text-2xl font-bold rounded-2xl bg-muted/30 w-full border border-input px-3 focus-visible:ring-2 focus-visible:ring-ring"
                 required
+                aria-label="Transaction amount in USD"
               />
             </div>
           </div>
@@ -135,7 +201,7 @@ export function TransactionForm() {
           </div>
           <div className="relative">
             <p className="text-primary-foreground/70 text-sm font-medium mb-1 uppercase tracking-wider">Current Balance</p>
-            <h3 className="text-4xl font-black mb-6">{formatCurrencyToUSD(parseFloat(balance))}</h3>
+            <h3 className="text-4xl font-black mb-6">{formatCurrencyToUSD(currentBalance)}</h3>
             
             <div className="flex items-center gap-4 text-sm font-medium">
               <div className="bg-white/20 px-3 py-1 rounded-full flex items-center gap-2">

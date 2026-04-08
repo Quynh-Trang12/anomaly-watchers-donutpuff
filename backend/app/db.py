@@ -8,6 +8,27 @@ from .schemas import TransactionRecord, TransactionStatusEnum, AuditLogEntry
 transactions_db: Dict[str, TransactionRecord] = {}
 audit_logs: List[AuditLogEntry] = []
 
+# Internal account registry — simulates a real banking ledger
+internal_account_registry: Dict[str, float] = {
+    "user_1": 450000.00,
+    "user_2": 15000.00,
+    "user_3": 250000.00,
+    "user_4": 75000.00,
+}
+
+def get_account_balance(user_id: str) -> Optional[float]:
+    """Returns the current balance for a registered internal account, or None if not found."""
+    return internal_account_registry.get(user_id)
+
+def deduct_account_balance(user_id: str, amount: float) -> float:
+    """Deducts the transaction amount from the originator's balance. Raises ValueError if insufficient funds."""
+    if user_id not in internal_account_registry:
+        raise ValueError(f"Account '{user_id}' not found in the internal network.")
+    if internal_account_registry[user_id] < amount:
+        raise ValueError(f"Insufficient funds for account '{user_id}'.")
+    internal_account_registry[user_id] -= amount
+    return internal_account_registry[user_id]
+
 def save_transaction(transaction: TransactionRecord):
     transactions_db[transaction.transaction_id] = transaction
 

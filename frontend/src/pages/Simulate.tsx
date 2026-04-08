@@ -1,7 +1,10 @@
+import { useState } from "react";
 import { Layout } from "@/components/layout/Layout";
 import { TransactionForm } from "@/components/simulator/TransactionForm";
 
 export default function Simulate() {
+  const [refreshTrigger, setRefreshTrigger] = useState<number>(0);
+
   return (
     <Layout>
       <div className="container py-4 sm:py-6 pb-28">
@@ -16,7 +19,10 @@ export default function Simulate() {
             </p>
           </header>
 
-          <TransactionForm />
+          <TransactionForm 
+            onTransactionApproved={() => setRefreshTrigger(prev => prev + 1)} 
+            refreshTrigger={refreshTrigger}
+          />
         </div>
       </div>
     </Layout>

@@ -36,6 +36,7 @@ class TransactionInput(BaseModel):
     oldbalanceDest: float = Field(default=0, ge=0)
     newbalanceDest: float = Field(default=0, ge=0)
     user_id: str = Field(default="user_123")
+    destination_account_id: str = Field(default="")
 
 
 class RiskFactor(BaseModel):
@@ -50,8 +51,6 @@ class PredictionOutput(BaseModel):
     status: TransactionStatusEnum
     explanation: Optional[str] = None
     risk_factors: List[RiskFactor] = Field(default_factory=list)
-    models_used: List[str] = Field(default_factory=list)
-    model_scores: Dict[str, float] = Field(default_factory=dict)
     transaction_id: str
 
 
@@ -89,3 +88,7 @@ class HealthResponse(BaseModel):
     status: str
     models_loaded: List[str] = Field(default_factory=list)
     feature_count: int = 0
+
+
+class QueueOverflowNotify(BaseModel):
+    queue_size: int

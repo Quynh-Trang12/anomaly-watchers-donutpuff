@@ -29,7 +29,8 @@ from .schemas import (
     TransactionRecord,
     ConfigurationResponse,
     BusinessRulesUpdate,
-    AuditLogEntry
+    AuditLogEntry,
+    QueueOverflowNotify
 )
 from .db import (
     save_transaction, 
@@ -37,7 +38,9 @@ from .db import (
     get_audit_logs, 
     get_user_transactions, 
     get_all_transactions,
-    update_transaction_status
+    update_transaction_status,
+    get_account_balance,
+    deduct_account_balance
 )
 from .services.mail_service import send_security_alert_email
 
@@ -133,9 +136,10 @@ def _build_risk_factors(
     if payload.oldbalanceOrg > 0:
         drain_ratio = payload.amount / payload.oldbalanceOrg
         if drain_ratio >= 0.95:
+            drain_percentage = min(drain_ratio * 100, 100)
             factors.append(
                 RiskFactor(
-                    factor="This transfer will use up almost all of the money currently in your account.",
+                    factor=f"This transfer of ${payload.amount:,.2f} will use up {drain_percentage:.0f}% of the money currently in your account.",
                     severity="danger",
                 )
             )
@@ -152,6 +156,7 @@ def _build_risk_factors(
     # 4. ML Signal
     ml_thresholds = config.get("ml_thresholds", {})
     block_threshold = ml_thresholds.get("block_threshold", 0.5)
+    step_up_threshold = ml_thresholds.get("step_up_threshold", 0.4)
     
     if probability >= block_threshold:
         factors.append(
@@ -160,7 +165,7 @@ def _build_risk_factors(
                 severity="danger",
             )
         )
-    elif probability >= 0.4:
+    elif probability >= step_up_threshold:
         factors.append(
             RiskFactor(
                 factor="We've noticed some unusual details in this request and need to double-check its security.",
@@ -178,10 +183,10 @@ def _build_risk_factors(
 
     return factors[:6]
 
-def _risk_level(probability: float) -> str:
-    if probability >= 0.75:
+def _risk_level(probability: float, block_threshold: float, step_up_threshold: float) -> str:
+    if probability >= block_threshold:
         return "High"
-    if probability >= 0.4:
+    if probability >= step_up_threshold:
         return "Medium"
     return "Low"
 
@@ -209,7 +214,7 @@ async def lifespan(app: FastAPI):
     else:
         # Fallback defaults
         app.state.system_configuration = {
-            "ml_thresholds": {"block_threshold": 0.5130, "step_up_threshold": 0.5130},
+            "ml_thresholds": {"block_threshold": 0.5130, "step_up_threshold": 0.10},
             "business_rules": {
                 "large_transfer_limit_amount": 150000.0,
                 "daily_velocity_limit": 500000.0,
@@ -243,6 +248,40 @@ async def health_check() -> HealthResponse:
         models_loaded=loaded_models,
         feature_count=len(feature_columns),
     )
+
+@app.get("/api/configuration/thresholds")
+async def get_active_thresholds():
+    """Exposes current ML decision thresholds for frontend visualization."""
+    return app.state.system_configuration.get("ml_thresholds", {})
+
+@app.get("/api/users/{user_id}/balance")
+async def get_user_balance(user_id: str):
+    """Returns the current real-time balance for an internal user account."""
+    balance = get_account_balance(user_id)
+    if balance is None:
+        raise HTTPException(status_code=404, detail=f"User '{user_id}' not found.")
+    return {"user_id": user_id, "balance": balance}
+
+@app.post("/api/admin/notify/queue_overflow")
+async def notify_admin_queue_overflow(payload: QueueOverflowNotify, background_tasks: BackgroundTasks):
+    """Triggers an OOB alert email when the review queue exceeds the threshold."""
+    queue_size = payload.queue_size
+    background_tasks.add_task(
+        send_security_alert_email,
+        recipient_email="admin@anomalywatchers.com",
+        otp_code="ADMIN_REVIEW",
+        transaction_details={
+            "amount": 0,
+            "type": f"QUEUE_OVERFLOW ({queue_size} items)",
+            "transaction_id": "ADMIN_ALERT"
+        }
+    )
+    add_audit_log(
+        admin_id="system",
+        action_type="QUEUE_OVERFLOW_ALERT",
+        details=f"Admin alerted: review queue has {queue_size} pending items."
+    )
+    return {"status": "alert_sent"}
 
 @app.get("/api/configuration", response_model=ConfigurationResponse)
 async def get_configuration():
@@ -307,6 +346,23 @@ async def predict_primary(transaction_input: TransactionInput, background_tasks:
     ml_thresholds = system_configuration.get("ml_thresholds", {})
     business_rules = system_configuration.get("business_rules", {})
     
+    # 0a. Validate that the originating user exists in the internal network
+    originator_balance = get_account_balance(transaction_input.user_id)
+    if originator_balance is None:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Originator account '{transaction_input.user_id}' not found in internal network."
+        )
+
+    # 0b. Validate that the destination account exists in the internal network
+    if transaction_input.destination_account_id:
+        destination_balance = get_account_balance(transaction_input.destination_account_id)
+        if destination_balance is None:
+            raise HTTPException(
+                status_code=400,
+                detail="Recipient account not found in internal network."
+            )
+
     # 1. Automated Step Calculation
     automated_step = _calculate_automated_step()
     
@@ -380,14 +436,21 @@ async def predict_primary(transaction_input: TransactionInput, background_tasks:
     )
     save_transaction(transaction_record_entry)
 
+    # 5. Deduct balance for APPROVED transactions
+    if transaction_status == TransactionStatusEnum.APPROVED:
+        try:
+            deduct_account_balance(transaction_input.user_id, transaction_input.amount)
+        except ValueError as deduction_error:
+            # This handles the case where balance changed between validation and completion
+            logger.warning("Balance deduction failed for %s: %s", transaction_input.user_id, deduction_error)
+            # In a real system we would roll back the transaction record, but for this simulation we just log it.
+
     return PredictionOutput(
         probability=probability_score,
         is_fraud=transaction_status == TransactionStatusEnum.BLOCKED,
-        risk_level=_risk_level(probability_score),
+        risk_level=_risk_level(probability_score, block_threshold, step_up_threshold),
         status=transaction_status,
         explanation=operation_explanation,
         risk_factors=risk_factors_list,
-        models_used=["random_forest"],
-        model_scores={"random_forest": probability_score},
         transaction_id=new_transaction_id
     )
