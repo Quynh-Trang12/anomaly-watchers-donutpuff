@@ -1,479 +1,157 @@
-import { useEffect, useState, useRef } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { useEffect, useState } from "react";
+import { Link, useLocation, useNavigate } from "react-router-dom";
 import { Layout } from "@/components/layout/Layout";
 import { Button } from "@/components/ui/button";
-import { DecisionBadge } from "@/components/ui/DecisionBadge";
-import { RiskScore } from "@/components/ui/RiskScore";
-import { OTPChallenge } from "@/components/result/OTPChallenge";
-import { TransactionDatasetView } from "@/components/result/TransactionDatasetView";
-import {
-  Transaction,
-  Decision,
-  DEFAULT_ORIGIN_ACCOUNTS,
-} from "@/types/transaction";
-import {
-  getPendingTransaction,
-  clearPendingTransaction,
-  updateTransaction,
-  getAdminSettings,
-} from "@/lib/storage";
-import { getEventTypeLabel, formatCurrency } from "@/lib/eventTypes";
-import {
-  PlayCircle,
-  History,
-  AlertCircle,
-  Lightbulb,
-  TrendingDown,
-  DollarSign,
-  Clock,
-  ArrowRight,
+import { PredictionOutput } from "@/api";
+import { 
+  ShieldCheck, 
+  ShieldAlert, 
+  Clock, 
+  ArrowLeft, 
+  History, 
+  AlertTriangle,
+  Mail,
+  CheckCircle2,
+  XCircle
 } from "lucide-react";
-
-// Generate human-readable explanations for risk factors
-function generateExplainability(
-  transaction: Transaction,
-  displayDecision: Decision,
-): {
-  icon: React.ElementType;
-  text: string;
-  severity: "info" | "warning" | "danger";
-}[] {
-  const explanations: {
-    icon: React.ElementType;
-    text: string;
-    severity: "info" | "warning" | "danger";
-  }[] = [];
-  const settings = getAdminSettings();
-
-  // High amount explanation
-  if (transaction.amount >= settings.highRiskAmount) {
-    explanations.push({
-      icon: DollarSign,
-      text: `High amount detected: ${formatCurrency(transaction.amount)} exceeds the ${formatCurrency(settings.highRiskAmount)} threshold.`,
-      severity: "warning",
-    });
-  }
-
-  // Balance drain detection
-  const drainPercentage =
-    transaction.oldbalanceOrg > 0
-      ? ((transaction.oldbalanceOrg - transaction.newbalanceOrig) /
-          transaction.oldbalanceOrg) *
-        100
-      : 0;
-  if (drainPercentage >= 80) {
-    explanations.push({
-      icon: TrendingDown,
-      text: `Balance drain detected: Account went from ${formatCurrency(transaction.oldbalanceOrg)} to ${formatCurrency(transaction.newbalanceOrig)} (${drainPercentage.toFixed(0)}% reduction).`,
-      severity: "danger",
-    });
-  } else if (drainPercentage >= 50) {
-    explanations.push({
-      icon: TrendingDown,
-      text: `Significant withdrawal: ${drainPercentage.toFixed(0)}% of account balance used in this transaction.`,
-      severity: "warning",
-    });
-  }
-
-  // Zero-out pattern
-  if (
-    transaction.newbalanceOrig === 0 &&
-    transaction.amount >= settings.zeroOutMinAmount
-  ) {
-    explanations.push({
-      icon: AlertCircle,
-      text: `Zero-out pattern: Account emptied with a ${formatCurrency(transaction.amount)} transaction.`,
-      severity: "danger",
-    });
-  }
-
-  // Transaction type specific explanations
-  if (
-    transaction.type === "TRANSFER" &&
-    transaction.amount >= settings.newDestLargeAmount
-  ) {
-    explanations.push({
-      icon: ArrowRight,
-      text: `Large transfer: P2P transfers over ${formatCurrency(settings.newDestLargeAmount)} receive additional scrutiny.`,
-      severity: "warning",
-    });
-  }
-
-  if (transaction.type === "CASH OUT" && transaction.amount >= 100000) {
-    explanations.push({
-      icon: AlertCircle,
-      text: `Large cash withdrawal: Cash-out transactions over $100,000 are flagged for review.`,
-      severity: "warning",
-    });
-  }
-
-  // Time-based explanation
-  const hour = (transaction.step - 1) % 24;
-  // Only flag timing if risk is elevated or explicitly high
-  if (hour >= 0 && hour < 6 && transaction.riskScore > 20) {
-    explanations.push({
-      icon: Clock,
-      text: `Unusual timing: Transaction occurred during off-hours (${hour}:00), contributing to risk.`,
-      severity: "info",
-    });
-  }
-
-  // --- Consistency Filter ---
-  // If the AI says it's SAFE (Low Risk), we shouldn't show "Danger" flags driven by simple rules.
-  // The AI likely sees other factors (e.g. valid history, device match) that override these rules.
-  const isLowRisk = transaction.riskScore < 50;
-
-  const filteredExplanations = explanations.map((exp) => {
-    if (isLowRisk) {
-      // Downgrade severities for low-risk transactions
-      if (exp.severity === "danger") {
-        return {
-          ...exp,
-          severity: "info" as const,
-          text: exp.text + " (Cleared by AI analysis)",
-        };
-      }
-      if (exp.severity === "warning") {
-        return {
-          ...exp,
-          severity: "info" as const,
-          text: exp.text + " (Within normal bounds for this profile)",
-        };
-      }
-    }
-    return exp;
-  });
-
-  // If approved, strictly limit negative explanations to avoid confusion
-  if (
-    displayDecision === "APPROVE" ||
-    displayDecision === "APPROVE_AFTER_STEPUP"
-  ) {
-    const criticalFactors = filteredExplanations.filter(
-      (e) => e.severity === "info",
-    );
-    if (criticalFactors.length === 0) {
-      criticalFactors.push({
-        icon: Lightbulb,
-        text: "Transaction parameters are consistent with legitimate behavior patterns.",
-        severity: "info",
-      });
-    }
-    return criticalFactors;
-  }
-
-  // If no specific explanations, add a general one based on decision
-  if (filteredExplanations.length === 0) {
-    filteredExplanations.push({
-      icon: AlertCircle,
-      text: "AI model detected potential anomalies in the transaction pattern.",
-      severity: "warning",
-    });
-  }
-
-  return filteredExplanations;
-}
+import { OTPChallenge } from "@/components/result/OTPChallenge";
+import { toast } from "sonner";
 
 export default function Result() {
+  const location = useLocation();
   const navigate = useNavigate();
-  const [transaction, setTransaction] = useState<Transaction | null>(null);
+  const [prediction, setPrediction] = useState<PredictionOutput | null>(null);
   const [showOTP, setShowOTP] = useState(false);
-  const [finalDecision, setFinalDecision] = useState<Decision | null>(null);
-  const headingRef = useRef<HTMLHeadingElement>(null);
+  const [state, setState] = useState<"INITIAL" | "VERIFIED" | "REJECTED">("INITIAL");
 
   useEffect(() => {
-    const pending = getPendingTransaction();
-    if (!pending) {
-      navigate("/simulate");
+    const data = location.state?.prediction as PredictionOutput;
+    if (!data) {
+      navigate("/");
       return;
     }
-    setTransaction(pending);
-    setFinalDecision(pending.decision);
-
-    if (pending.decision === "STEP_UP") {
+    setPrediction(data);
+    if (data.status === "PENDING_USER_OTP") {
       setShowOTP(true);
     }
-
-    clearPendingTransaction();
-
-    // Focus heading for accessibility
-    setTimeout(() => {
-      headingRef.current?.focus();
-    }, 100);
-  }, [navigate]);
+  }, [location, navigate]);
 
   const handleOTPSuccess = () => {
-    if (!transaction) return;
-    const newDecision: Decision = "APPROVE_AFTER_STEPUP";
-    setFinalDecision(newDecision);
     setShowOTP(false);
-    updateTransaction(transaction.id, { decision: newDecision });
+    setState("VERIFIED");
+    toast.success("Security code verified. Transaction authorized.");
   };
 
   const handleOTPFail = () => {
-    if (!transaction) return;
-    const newDecision: Decision = "BLOCK_STEPUP_FAILED";
-    setFinalDecision(newDecision);
     setShowOTP(false);
-    updateTransaction(transaction.id, { decision: newDecision });
+    setState("REJECTED");
+    toast.error("Verification failed.");
   };
 
-  if (!transaction) {
-    return (
-      <Layout>
-        <div className="container py-12 text-center">
-          <p className="text-muted-foreground">Loading...</p>
-        </div>
-      </Layout>
-    );
-  }
+  if (!prediction) return null;
 
-  const displayDecision = finalDecision || transaction.decision;
-  const explanations = generateExplainability(transaction, displayDecision);
-
-  // Get friendly account name
-  const originAccount = DEFAULT_ORIGIN_ACCOUNTS.find(
-    (a) => a.id === transaction.nameOrig,
-  );
-  const accountDisplayName = originAccount?.displayName || transaction.nameOrig;
-
-  const decisionColors = {
-    APPROVE: "bg-success-muted border-success/20",
-    STEP_UP: "bg-warning-muted border-warning/20",
-    BLOCK: "bg-danger-muted border-danger/20",
-    APPROVE_AFTER_STEPUP: "bg-success-muted border-success/20",
-    BLOCK_STEPUP_FAILED: "bg-danger-muted border-danger/20",
-  };
-
-  const severityStyles = {
-    info: "bg-muted/50 text-muted-foreground",
-    warning: "bg-warning-muted text-warning",
-    danger: "bg-danger-muted text-danger",
-  };
+  const isBlocked = prediction.status === "BLOCKED" || state === "REJECTED";
+  const isApproved = prediction.status === "APPROVED" || state === "VERIFIED";
+  const isPendingReview = prediction.status === "PENDING_ADMIN_REVIEW";
 
   return (
     <Layout>
-      <div className="container py-6 sm:py-8">
-        <div className="max-w-2xl mx-auto space-y-6">
-          {/* Decision Banner */}
-          <div
-            className={`rounded-lg border p-6 text-center ${decisionColors[displayDecision]}`}
-          >
-            <h1
-              ref={headingRef}
-              tabIndex={-1}
-              className="text-2xl sm:text-3xl font-bold mb-4 outline-none"
-            >
-              Risk Assessment Result
+      <div className="container py-12 max-w-3xl">
+        <div className="space-y-8">
+          {/* Header Status */}
+          <div className="text-center space-y-4">
+            {isApproved ? (
+              <div className="inline-flex items-center justify-center p-4 bg-success/10 rounded-full text-success mb-2">
+                <ShieldCheck className="h-16 w-16" />
+              </div>
+            ) : isBlocked ? (
+              <div className="inline-flex items-center justify-center p-4 bg-danger/10 rounded-full text-danger mb-2">
+                <ShieldAlert className="h-16 w-16" />
+              </div>
+            ) : (
+              <div className="inline-flex items-center justify-center p-4 bg-warning/10 rounded-full text-warning mb-2">
+                <Clock className="h-16 w-16" />
+              </div>
+            )}
+            
+            <h1 className="text-4xl font-black tracking-tight">
+              {isApproved ? "Transaction Secure" : 
+               isBlocked ? "Transaction Blocked" : 
+               "Verification Required"}
             </h1>
-            <DecisionBadge decision={displayDecision} size="lg" />
+            <p className="text-muted-foreground text-lg">{prediction.explanation}</p>
           </div>
 
-          {/* OTP Challenge */}
+          {/* OTP Challenge Component */}
           {showOTP && (
-            <div className="section-card-elevated">
-              <OTPChallenge
-                onSuccess={handleOTPSuccess}
-                onFail={handleOTPFail}
-              />
-            </div>
-          )}
-
-          {/* Risk Score */}
-          {!showOTP && (
-            <div className="section-card">
-              <h2 className="font-semibold mb-4">Risk Analysis</h2>
-              <RiskScore score={transaction.riskScore} size="lg" />
-
-              <div className="mt-4 pt-4 border-t border-border">
-                <h3 className="text-sm font-medium text-muted-foreground mb-2">
-                  Risk Factors
-                </h3>
-                <ul className="space-y-2">
-                  {transaction.reasons.map((reason, index) => (
-                    <li key={index} className="flex items-start gap-2 text-sm">
-                      <AlertCircle
-                        className="h-4 w-4 text-muted-foreground shrink-0 mt-0.5"
-                        aria-hidden="true"
-                      />
-                      {reason}
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            </div>
-          )}
-
-          {/* {!showOTP &&
-            (transaction.backendExplanation ||
-              transaction.backendRiskLevel ||
-              transaction.modelsUsed?.length ||
-              (transaction.modelScores &&
-                Object.keys(transaction.modelScores).length > 0)) && (
-              <div className="section-card">
-                <h2 className="font-semibold mb-4">Model Output</h2>
-                <div className="space-y-4 text-sm">
-                  {transaction.backendExplanation && (
-                    <p className="text-muted-foreground leading-6">
-                      {transaction.backendExplanation}
-                    </p>
-                  )}
-
-                  <div className="grid gap-3 sm:grid-cols-2">
-                    {transaction.backendRiskLevel && (
-                      <div className="rounded-lg bg-muted/30 p-3">
-                        <div className="text-xs uppercase tracking-wide text-muted-foreground">
-                          Backend Risk Level
-                        </div>
-                        <div className="mt-1 font-medium">
-                          {transaction.backendRiskLevel}
-                        </div>
-                      </div>
-                    )}
-
-                    {transaction.modelsUsed && transaction.modelsUsed.length > 0 && (
-                      <div className="rounded-lg bg-muted/30 p-3">
-                        <div className="text-xs uppercase tracking-wide text-muted-foreground">
-                          Models Used
-                        </div>
-                        <div className="mt-1 font-medium">
-                          {transaction.modelsUsed.join(", ")}
-                        </div>
-                      </div>
-                    )}
-                  </div>
-
-                  {transaction.modelScores &&
-                    Object.keys(transaction.modelScores).length > 0 && (
-                      <div className="space-y-2">
-                        <h3 className="text-xs uppercase tracking-wide text-muted-foreground">
-                          Model Scores
-                        </h3>
-                        <div className="grid gap-2 sm:grid-cols-2">
-                          {Object.entries(transaction.modelScores).map(
-                            ([name, score]) => (
-                              <div
-                                key={name}
-                                className="rounded-lg bg-muted/30 p-3"
-                              >
-                                <div className="text-xs uppercase tracking-wide text-muted-foreground">
-                                  {name}
-                                </div>
-                                <div className="mt-1 font-medium">
-                                  {(score * 100).toFixed(1)}%
-                                </div>
-                              </div>
-                            ),
-                          )}
-                        </div>
-                      </div>
-                    )}
+            <div className="bg-card border-2 border-primary/20 rounded-3xl p-8 shadow-xl">
+              <div className="flex items-center gap-4 mb-6">
+                <div className="p-3 bg-primary/10 rounded-xl text-primary">
+                  <Mail className="h-6 w-6" />
+                </div>
+                <div>
+                  <h3 className="text-xl font-bold">Check your email</h3>
+                  <p className="text-sm text-muted-foreground">We sent a 6-digit code to verify your identity.</p>
                 </div>
               </div>
-            )} */}
+              <OTPChallenge onSuccess={handleOTPSuccess} onFail={handleOTPFail} />
+            </div>
+          )}
 
-          {/* Explainability Section */}
-          {!showOTP && explanations.length > 0 && (
-            <div className="section-card">
-              <div className="flex items-center gap-2 mb-4">
-                <Lightbulb
-                  className="h-5 w-5 text-primary"
-                  aria-hidden="true"
-                />
-                <h2 className="font-semibold">Why This Decision?</h2>
-              </div>
-              <p className="text-sm text-muted-foreground mb-4">
-                Here's what our AI detected based on your transaction inputs:
+          {/* Verification / Review Status */}
+          {isPendingReview && (
+            <div className="bg-warning/5 border border-warning/20 rounded-3xl p-8 text-center space-y-4">
+              <AlertTriangle className="h-12 w-12 text-warning mx-auto" />
+              <h3 className="text-xl font-bold">Administrative Review</h3>
+              <p className="text-muted-foreground max-w-md mx-auto">
+                Due to the large transaction volume, this transfer has been queued for manual review by our security team. You will be notified once processed.
               </p>
-              <ul className="space-y-3">
-                {explanations.map((explanation, index) => {
-                  const Icon = explanation.icon;
-                  return (
-                    <li
-                      key={index}
-                      className={`flex items-start gap-3 p-3 rounded-lg ${severityStyles[explanation.severity]}`}
-                    >
-                      <Icon
-                        className="h-5 w-5 shrink-0 mt-0.5"
-                        aria-hidden="true"
-                      />
-                      <span className="text-sm">{explanation.text}</span>
-                    </li>
-                  );
-                })}
-              </ul>
             </div>
           )}
 
-          {/* Transaction Summary */}
+          {/* Risk Factors - Human Readable XAI */}
           {!showOTP && (
-            <div className="section-card">
-              <h2 className="font-semibold mb-4">Transaction Summary</h2>
-              <dl className="grid grid-cols-2 gap-3 text-sm">
-                <div>
-                  <dt className="text-muted-foreground">Event Type</dt>
-                  <dd className="font-medium">
-                    {getEventTypeLabel(transaction.type)}
-                  </dd>
-                </div>
-                <div>
-                  <dt className="text-muted-foreground">Amount</dt>
-                  <dd className="font-mono font-medium">
-                    {formatCurrency(transaction.amount)}
-                  </dd>
-                </div>
-                <div>
-                  <dt className="text-muted-foreground">Sender</dt>
-                  <dd>
-                    <span className="font-medium">{accountDisplayName}</span>
-                    <span className="text-xs text-muted-foreground block font-mono">
-                      {transaction.nameOrig}
-                    </span>
-                  </dd>
-                </div>
-                <div>
-                  <dt className="text-muted-foreground">Recipient</dt>
-                  <dd className="font-mono text-xs">{transaction.nameDest}</dd>
-                </div>
-                <div>
-                  <dt className="text-muted-foreground">Legacy Flagged</dt>
-                  <dd>{transaction.isFlaggedFraud === 1 ? "Yes" : "No"}</dd>
-                </div>
-                <div>
-                  <dt className="text-muted-foreground">Created</dt>
-                  <dd className="text-xs">
-                    {new Date(transaction.createdAt).toLocaleString()}
-                  </dd>
-                </div>
-              </dl>
+            <div className="bg-card border rounded-3xl overflow-hidden shadow-sm">
+              <div className="p-6 border-b bg-muted/30">
+                <h3 className="font-bold flex items-center gap-2">
+                  <ShieldCheck className="h-5 w-5 text-primary" />
+                  Security Analysis Details
+                </h3>
+              </div>
+              <div className="p-6 space-y-4">
+                {prediction.risk_factors.map((rf, idx) => (
+                  <div key={idx} className={`p-4 rounded-2xl flex gap-4 ${
+                    rf.severity === 'danger' ? 'bg-danger/5 border border-danger/10 text-danger' : 
+                    rf.severity === 'warning' ? 'bg-warning/5 border border-warning/10 text-warning' : 
+                    'bg-muted/50 text-muted-foreground'
+                  }`}>
+                    <div className="mt-1 shrink-0">
+                      {rf.severity === 'danger' ? <XCircle className="h-5 w-5" /> : 
+                       rf.severity === 'warning' ? <AlertTriangle className="h-5 w-5" /> : 
+                       <CheckCircle2 className="h-5 w-5" />}
+                    </div>
+                    <p className="text-sm font-medium leading-relaxed">{rf.factor}</p>
+                  </div>
+                ))}
+              </div>
             </div>
-          )}
-
-          {/* Dataset View - Collapsed by default */}
-          {!showOTP && (
-            <TransactionDatasetView
-              transaction={transaction}
-              defaultOpen={false}
-            />
           )}
 
           {/* Actions */}
-          {!showOTP && (
-            <div className="flex flex-col sm:flex-row gap-3">
-              <Button asChild className="flex-1 gap-2">
-                <Link to="/simulate">
-                  <PlayCircle className="h-4 w-4" aria-hidden="true" />
-                  Run Another Simulation
-                </Link>
-              </Button>
-              <Button asChild variant="outline" className="flex-1 gap-2">
-                <Link to="/history">
-                  <History className="h-4 w-4" aria-hidden="true" />
-                  View Activity Log
-                </Link>
-              </Button>
-            </div>
-          )}
+          <div className="flex flex-col sm:flex-row gap-4">
+            <Button asChild variant="outline" size="lg" className="flex-1 h-14 rounded-2xl gap-2 font-bold">
+              <Link to="/history">
+                <History className="h-5 w-5" />
+                View Activity log
+              </Link>
+            </Button>
+            <Button asChild size="lg" className="flex-1 h-14 rounded-2xl gap-2 font-bold shadow-lg shadow-primary/20">
+              <Link to="/">
+                <ArrowLeft className="h-5 w-5" />
+                Return to Wallet
+              </Link>
+            </Button>
+          </div>
         </div>
       </div>
     </Layout>

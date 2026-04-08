@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useRef, useCallback } from "react";
+import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -10,617 +10,150 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Switch } from "@/components/ui/switch";
-import { PresetButtons } from "./PresetButtons";
-import { AccountSelector } from "./AccountSelector";
-import { WalletWidget } from "./WalletWidget";
-import { ProcessingModal } from "./ProcessingModal";
-import { SimulatorHelpCallout } from "./SimulatorHelpCallout";
-import { TimeStepBadge } from "@/components/ui/TimeStepBadge";
-import { TransactionPreset } from "@/lib/presets";
-import { EVENT_TYPE_LABELS, formatCurrency } from "@/lib/eventTypes";
-import {
-  TransactionType,
-  Transaction,
-  TRANSACTION_TYPES,
-  DEFAULT_ORIGIN_ACCOUNTS,
-} from "@/types/transaction";
-import {
-  getLastStep,
-  setLastStep,
-  getOriginAccounts,
-  getDestinationBalances,
-  updateDestinationBalance,
-  updateOriginAccount,
-  saveTransaction,
-  getAdminSettings,
-  setPendingTransaction,
-} from "@/lib/storage";
-import { computeIsFlaggedFraud } from "@/lib/scoring";
 import { predictPrimary } from "@/api";
-import {
-  RotateCcw,
-  Send,
-  ChevronDown,
-  ChevronUp,
-  DollarSign,
-  Clock,
-} from "lucide-react";
-
-interface FormErrors {
-  [key: string]: string;
-}
+import { useAuth } from "@/context/AuthContext";
+import { Send, Wallet, ArrowRightLeft, Landmark, CreditCard } from "lucide-react";
+import { toast } from "sonner";
 
 export function TransactionForm() {
   const navigate = useNavigate();
-  const formRef = useRef<HTMLFormElement>(null);
-  const errorSummaryRef = useRef<HTMLDivElement>(null);
-
-  // Form state - step is now auto-managed
-  const [step, setStep] = useState(getLastStep() + 1);
-  const [type, setType] = useState<TransactionType | "">("");
-  const [nameOrig, setNameOrig] = useState("");
+  const { userId } = useAuth();
+  
+  const [type, setType] = useState<string>("TRANSFER");
   const [amount, setAmount] = useState("");
-  const [nameDest, setNameDest] = useState("");
-  const [advancedMode, setAdvancedMode] = useState(false);
-  const [allowNegativeBalance, setAllowNegativeBalance] = useState(false);
-  const [manualOldBalanceDest, setManualOldBalanceDest] = useState("");
-  const [errors, setErrors] = useState<FormErrors>({});
+  const [targetAccount, setTargetAccount] = useState("");
+  const [balance, setBalance] = useState("450000.00");
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [showProcessingModal, setShowProcessingModal] = useState(false);
-  const [pendingTransactionData, setPendingTransactionData] =
-    useState<Transaction | null>(null);
-
-  const originAccounts = useMemo(() => getOriginAccounts(), []);
-  const destBalances = useMemo(() => getDestinationBalances(), []);
-  const adminSettings = useMemo(() => getAdminSettings(), []);
-
-  // Get selected origin account
-  const selectedOrigin = originAccounts.find((a) => a.id === nameOrig);
-  const oldbalanceOrg = selectedOrigin?.balance ?? 0;
-
-  // Compute destination name based on type
-  const computedNameDest = useMemo(() => {
-    if (advancedMode && nameDest) return nameDest;
-    if (!type) return "";
-
-    switch (type) {
-      case "CASH OUT":
-      case "CASH IN":
-        return "CASH AGENT";
-      case "DEBIT":
-        return "BANK FEE ACCOUNT";
-      case "PAYMENT":
-        return `M${Math.random().toString().slice(2, 12)}`;
-      case "TRANSFER":
-        return `C${Math.random().toString().slice(2, 12)}`;
-      default:
-        return "";
-    }
-  }, [type, advancedMode, nameDest]);
-
-  // Compute balances
-  const amountNum = parseFloat(amount) || 0;
-
-  const oldbalanceDest =
-    advancedMode && manualOldBalanceDest !== ""
-      ? parseFloat(manualOldBalanceDest) || 0
-      : (destBalances[computedNameDest] ?? 0);
-
-  const newbalanceOrig = useMemo(() => {
-    if (type === "CASH IN") {
-      return oldbalanceOrg + amountNum;
-    }
-    return Math.max(oldbalanceOrg - amountNum, 0);
-  }, [type, oldbalanceOrg, amountNum]);
-
-  const newbalanceDest = useMemo(() => {
-    // For simplicity, CASH OUT doesn't reduce agent balance
-    if (type === "CASH OUT") {
-      return oldbalanceDest;
-    }
-    return oldbalanceDest + amountNum;
-  }, [type, oldbalanceDest, amountNum]);
-
-  // Validation
-  const validate = (): boolean => {
-    const newErrors: FormErrors = {};
-
-    if (step < 1) {
-      newErrors.step = "Time step must be at least 1";
-    }
-    if (!type) {
-      newErrors.type = "Please select an event type";
-    }
-    if (!nameOrig) {
-      newErrors.nameOrig = "Please select a sender account";
-    }
-    if (!amount || amountNum <= 0) {
-      newErrors.amount = "Amount must be greater than $0";
-    }
-    if (
-      !allowNegativeBalance &&
-      adminSettings.blockInsufficientBalance &&
-      type !== "CASH IN" &&
-      amountNum > oldbalanceOrg
-    ) {
-      newErrors.amount = `Insufficient balance. Available: ${formatCurrency(oldbalanceOrg)}`;
-    }
-
-    setErrors(newErrors);
-    return Object.keys(newErrors).length === 0;
-  };
-
-  // Focus first error field
-  useEffect(() => {
-    if (Object.keys(errors).length > 0 && errorSummaryRef.current) {
-      errorSummaryRef.current.focus();
-    }
-  }, [errors]);
-
-  const handlePresetSelect = (preset: TransactionPreset) => {
-    const account = DEFAULT_ORIGIN_ACCOUNTS[preset.originAccountIndex];
-    setType(preset.type);
-    setNameOrig(account.id);
-    setAmount(preset.amount.toString());
-    if (preset.customNameDest) {
-      setAdvancedMode(true);
-      setNameDest(preset.customNameDest);
-    }
-    setErrors({});
-  };
-
-  const handleReset = () => {
-    setStep(getLastStep() + 1);
-    setType("");
-    setNameOrig("");
-    setAmount("");
-    setNameDest("");
-    setAdvancedMode(false);
-    setAllowNegativeBalance(false);
-    setManualOldBalanceDest("");
-    setErrors({});
-  };
-
-  const handleProcessingComplete = useCallback(() => {
-    if (pendingTransactionData) {
-      // Save transaction
-      saveTransaction(pendingTransactionData);
-
-      // Update balances
-      updateOriginAccount(
-        pendingTransactionData.nameOrig,
-        pendingTransactionData.newbalanceOrig,
-      );
-      updateDestinationBalance(
-        pendingTransactionData.nameDest,
-        pendingTransactionData.newbalanceDest,
-      );
-
-      // Update last step
-      setLastStep(pendingTransactionData.step);
-
-      // Store pending transaction for result page
-      setPendingTransaction(pendingTransactionData);
-
-      // Navigate to result
-      navigate("/result");
-    }
-    setShowProcessingModal(false);
-    setIsSubmitting(false);
-  }, [pendingTransactionData, navigate]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-
-    if (!validate()) return;
+    
+    const amountNum = parseFloat(amount);
+    if (isNaN(amountNum) || amountNum <= 0) {
+      toast.error("Please enter a valid amount");
+      return;
+    }
 
     setIsSubmitting(true);
-
     try {
-      const finalNameDest = computedNameDest;
-      const isFlaggedFraud = computeIsFlaggedFraud(
-        type as TransactionType,
-        amountNum,
-        adminSettings,
-      );
-
-      // --- AI INTEGRATION ---
-      // Call the Python backend and map the model-centric response into the demo UX.
-      console.log("Calling Backend API...");
-      const apiResponse = await predictPrimary({
-        step: step,
-        type: type as string,
+      const result = await predictPrimary({
+        type,
         amount: amountNum,
-        oldbalanceOrg: oldbalanceOrg,
-        newbalanceOrig: newbalanceOrig,
-        oldbalanceDest: oldbalanceDest,
-        newbalanceDest: newbalanceDest,
+        oldbalanceOrg: parseFloat(balance),
+        newbalanceOrig: parseFloat(balance) - amountNum,
+        oldbalanceDest: 0,
+        newbalanceDest: amountNum,
+        user_id: userId
       });
 
-      // Map Backend Response to Frontend Types
-      // API returns probability as 0-1, we convert to percentage
-      const riskScore = Math.round(apiResponse.probability * 100);
-      const isFraud = apiResponse.is_fraud;
-      const riskLevel = apiResponse.risk_level;
-
-      let decision: "APPROVE" | "STEP_UP" | "BLOCK" = "APPROVE";
-      if (riskLevel === "High") decision = "BLOCK";
-      else if (riskLevel === "Medium") decision = "STEP_UP";
-
-      // Create Reasons List — use structured XAI factors from the backend
-      const modelReasons = [
-        `AI Risk Probability: ${riskScore}%`,
-        `Risk Level: ${riskLevel}`,
-      ];
-
-      if (apiResponse.explanation) {
-        modelReasons.push(apiResponse.explanation);
-      }
-
-      // Append structured risk factors from the backend XAI engine
-      if (apiResponse.risk_factors && apiResponse.risk_factors.length > 0) {
-        for (const rf of apiResponse.risk_factors) {
-          modelReasons.push(rf.factor);
-        }
-      }
-
-      if (isFlaggedFraud)
-        modelReasons.push("Matches Legacy Fraud Patterns (Rule-based)");
-
-      const transaction: Transaction = {
-        id: crypto.randomUUID(),
-        step,
-        type: type as TransactionType,
-        amount: amountNum,
-        nameOrig,
-        oldbalanceOrg,
-        newbalanceOrig,
-        nameDest: finalNameDest,
-        oldbalanceDest,
-        newbalanceDest,
-        isFraud: isFraud ? 1 : 0,
-        isFlaggedFraud,
-        riskScore: riskScore,
-        decision: decision,
-        reasons: modelReasons,
-        backendRiskLevel: riskLevel,
-        backendExplanation: apiResponse.explanation,
-        modelScores: apiResponse.model_scores,
-        modelsUsed: apiResponse.models_used,
-        createdAt: new Date().toISOString(),
-      };
-
-      // Store transaction data and show processing modal
-      setPendingTransactionData(transaction);
-      setShowProcessingModal(true);
-    } catch (error: any) {
-      console.error("API Error:", error);
-
-      let errorMessage = "Could not connect to the AI backend.";
-
-      if (error.response) {
-        // The request was made and the server responded with a status code
-        // that falls out of the range of 2xx
-        errorMessage = `Server Error (${error.response.status}): ${
-          error.response.data?.detail || error.response.statusText
-        }`;
-      } else if (error.request) {
-        // The request was made but no response was received
-        errorMessage =
-          "No response from AI backend. Check if the server is running.";
-      } else {
-        errorMessage = `Request Error: ${error.message}`;
-      }
-
-      setErrors({
-        submit: errorMessage,
-      });
+      // Navigate to results with the prediction data
+      navigate("/result", { state: { prediction: result, originalData: { type, amount: amountNum, targetAccount } } });
+    } catch (error) {
+      toast.error("Prediction engine error. Please check backend.");
+    } finally {
       setIsSubmitting(false);
     }
   };
 
-  const isValid = type && nameOrig && amountNum > 0 && step >= 1;
-
   return (
-    <>
-      <form
-        ref={formRef}
-        onSubmit={handleSubmit}
-        className="space-y-4 sm:space-y-6"
-        noValidate
-      >
-        {/* Help Callout */}
-        <SimulatorHelpCallout />
+    <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+      {/* Transaction Setup */}
+      <div className="lg:col-span-2 bg-card border rounded-3xl p-8 shadow-sm">
+        <h2 className="text-2xl font-bold mb-6 flex items-center gap-2">
+          <ArrowRightLeft className="h-6 w-6 text-primary" />
+          Seamless Money Transfer
+        </h2>
+        
+        <form onSubmit={handleSubmit} className="space-y-6">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div className="space-y-2">
+              <Label>Transfer Type</Label>
+              <Select value={type} onValueChange={setType}>
+                <SelectTrigger className="h-12 rounded-xl">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="TRANSFER">P2P Transfer</SelectItem>
+                  <SelectItem value="CASH_OUT">Cash Withdrawal</SelectItem>
+                  <SelectItem value="PAYMENT">Merchant Payment</SelectItem>
+                  <SelectItem value="DEBIT">Bank Debit</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
 
-        {/* Error Summary */}
-        {Object.keys(errors).length > 0 && (
-          <div
-            ref={errorSummaryRef}
-            className="bg-danger-muted border border-danger/20 rounded-lg p-4"
-            role="alert"
-            aria-live="polite"
-            tabIndex={-1}
-          >
-            <p className="font-medium text-danger mb-2">
-              Please fix the following errors:
-            </p>
-            <ul className="list-disc list-inside text-sm text-danger space-y-1">
-              {Object.entries(errors).map(([field, message]) => (
-                <li key={field}>{message}</li>
-              ))}
-            </ul>
-          </div>
-        )}
-
-        <div className="grid lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)] gap-4 sm:gap-6">
-          {/* Left Column - Form */}
-          <div className="min-w-0 space-y-4 sm:space-y-6">
-            {/* Section 1: WHO - Account Selection with Wallet Preview */}
-            <fieldset className="form-fieldset min-w-0">
-              <legend className="form-legend">Sender</legend>
-
-              <div className="space-y-4">
-                <AccountSelector
-                  accounts={originAccounts}
-                  selectedId={nameOrig}
-                  onSelect={setNameOrig}
-                  disabled={isSubmitting}
-                />
-
-                {/* Wallet Widget - shows when account is selected */}
-                {selectedOrigin && (
-                  <WalletWidget
-                    accountName={selectedOrigin.displayName}
-                    currentBalance={oldbalanceOrg}
-                    amount={amountNum}
-                    transactionType={type}
-                  />
-                )}
-              </div>
-            </fieldset>
-
-            {/* Section 2: WHAT - Transaction Type & Amount */}
-            <fieldset className="form-fieldset">
-              <legend className="form-legend">
-                Type of Transaction
-              </legend>
-
-              <div className="space-y-4">
-                <div className="space-y-2">
-                  <Label htmlFor="type">Event Type</Label>
-                  <Select
-                    value={type}
-                    onValueChange={(v) => setType(v as TransactionType)}
-                  >
-                    <SelectTrigger
-                      id="type"
-                      aria-describedby={errors.type ? "type-error" : undefined}
-                      aria-invalid={!!errors.type}
-                    >
-                      <SelectValue placeholder="Select event type..." />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {TRANSACTION_TYPES.map((t) => (
-                        <SelectItem key={t.value} value={t.value}>
-                          <span className="font-medium">
-                            {EVENT_TYPE_LABELS[t.value]}
-                          </span>
-                          <span className="text-muted-foreground ml-2 text-xs">
-                            ({t.value})
-                          </span>
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  {errors.type && (
-                    <p id="type-error" className="text-sm text-danger">
-                      {errors.type}
-                    </p>
-                  )}
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="amount">Amount</Label>
-                  <div className="relative">
-                    <DollarSign className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                    <Input
-                      id="amount"
-                      type="number"
-                      min={0}
-                      step="0.01"
-                      value={amount}
-                      onChange={(e) => setAmount(e.target.value)}
-                      placeholder="0.00"
-                      className="pl-9"
-                      aria-describedby={
-                        errors.amount ? "amount-error" : "amount-hint"
-                      }
-                      aria-invalid={!!errors.amount}
-                    />
-                  </div>
-                  {errors.amount ? (
-                    <p id="amount-error" className="text-sm text-danger">
-                      {errors.amount}
-                    </p>
-                  ) : (
-                    <p
-                      id="amount-hint"
-                      className="text-xs text-muted-foreground"
-                    >
-                      Enter the transaction amount in USD (simulated)
-                    </p>
-                  )}
-                </div>
-              </div>
-            </fieldset>
-
-            {/* Section 3: WHERE - Destination (mostly auto-generated) */}
-            <fieldset className="form-fieldset">
-              <legend className="form-legend">Receiver</legend>
-
-              <div className="space-y-2">
-                <Label htmlFor="nameDest">Recipient / Merchant</Label>
-                {advancedMode ? (
-                  <Input
-                    id="nameDest"
-                    value={nameDest}
-                    onChange={(e) => setNameDest(e.target.value)}
-                    placeholder={computedNameDest || "Enter recipient..."}
-                  />
-                ) : (
-                  <Input
-                    id="nameDest"
-                    value={computedNameDest}
-                    readOnly
-                    className="bg-muted font-mono"
-                    aria-describedby="nameDest-hint"
-                  />
-                )}
-                <p id="nameDest-hint" className="text-xs text-muted-foreground">
-                  {advancedMode
-                    ? "Enter custom recipient"
-                    : "Auto-generated based on event type"}
-                </p>
-              </div>
-            </fieldset>
-
-            {/* Advanced Mode */}
-            <div className="section-card">
-              <button
-                type="button"
-                className="flex items-center justify-between w-full text-left"
-                onClick={() => setAdvancedMode(!advancedMode)}
-                aria-expanded={advancedMode}
-                aria-controls="advanced-options"
-              >
-                <span className="font-medium">Advanced Options</span>
-                {advancedMode ? (
-                  <ChevronUp className="h-4 w-4 text-muted-foreground" />
-                ) : (
-                  <ChevronDown className="h-4 w-4 text-muted-foreground" />
-                )}
-              </button>
-
-              {advancedMode && (
-                <div
-                  id="advanced-options"
-                  className="mt-4 space-y-4 pt-4 border-t border-border"
-                >
-                  {/* Time Step Override */}
-                  <div className="space-y-2">
-                    <Label htmlFor="step" className="flex items-center gap-2">
-                      <Clock className="h-4 w-4" aria-hidden="true" />
-                      Time Step (Hours since start)
-                    </Label>
-                    <Input
-                      id="step"
-                      type="number"
-                      min={1}
-                      value={step}
-                      onChange={(e) => setStep(parseInt(e.target.value) || 1)}
-                      aria-describedby={
-                        errors.step ? "step-error" : "step-hint"
-                      }
-                      aria-invalid={!!errors.step}
-                    />
-                    {errors.step ? (
-                      <p id="step-error" className="text-sm text-danger">
-                        {errors.step}
-                      </p>
-                    ) : (
-                      <TimeStepBadge step={step} className="mt-1" />
-                    )}
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label htmlFor="manualOldBalanceDest">
-                      Override Recipient Starting Balance
-                    </Label>
-                    <div className="relative">
-                      <DollarSign className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                      <Input
-                        id="manualOldBalanceDest"
-                        type="number"
-                        min={0}
-                        value={manualOldBalanceDest}
-                        onChange={(e) =>
-                          setManualOldBalanceDest(e.target.value)
-                        }
-                        placeholder={oldbalanceDest.toString()}
-                        className="pl-9"
-                      />
-                    </div>
-                  </div>
-
-                  <div className="flex items-center justify-between">
-                    <div className="space-y-0.5">
-                      <Label htmlFor="allowNegative">
-                        Allow insufficient balance
-                      </Label>
-                      <p className="text-xs text-muted-foreground">
-                        Bypass balance check for testing edge cases
-                      </p>
-                    </div>
-                    <Switch
-                      id="allowNegative"
-                      checked={allowNegativeBalance}
-                      onCheckedChange={setAllowNegativeBalance}
-                    />
-                  </div>
-                </div>
-              )}
+            <div className="space-y-2">
+              <Label>Recipient Account ID</Label>
+              <Input 
+                placeholder="C123456789" 
+                className="h-12 rounded-xl font-mono"
+                value={targetAccount}
+                onChange={e => setTargetAccount(e.target.value)}
+                required
+              />
             </div>
           </div>
 
-          {/* Right Column - Presets */}
-          <div className="min-w-0">
-            <PresetButtons
-              onSelect={handlePresetSelect}
-              disabled={isSubmitting}
-            />
+          <div className="space-y-2">
+            <Label>Amount (USD)</Label>
+            <div className="relative">
+              <span className="absolute left-4 top-1/2 -translate-y-1/2 text-xl font-bold text-muted-foreground">$</span>
+              <Input 
+                type="number" 
+                placeholder="0.00" 
+                className="h-16 pl-10 text-2xl font-bold rounded-2xl bg-muted/30"
+                value={amount}
+                onChange={e => setAmount(e.target.value)}
+                required
+              />
+            </div>
+          </div>
+
+          <Button 
+            type="submit" 
+            disabled={isSubmitting}
+            className="w-full h-16 rounded-2xl text-lg font-bold gap-3 shadow-lg shadow-primary/20 transition-all hover:scale-[1.01] active:scale-[0.99]"
+          >
+            {isSubmitting ? "Securing Transaction..." : <><Send className="h-5 w-5" /> Execute Transfer</>}
+          </Button>
+        </form>
+      </div>
+
+      {/* Wallet Info */}
+      <div className="space-y-6">
+        <div className="bg-primary text-primary-foreground rounded-3xl p-8 shadow-xl relative overflow-hidden group">
+          <div className="absolute -right-8 -top-8 opacity-10 group-hover:scale-110 transition-transform duration-500">
+            <Wallet className="h-40 w-40" />
+          </div>
+          <div className="relative">
+            <p className="text-primary-foreground/70 text-sm font-medium mb-1 uppercase tracking-wider">Current Balance</p>
+            <h3 className="text-4xl font-black mb-6">${parseFloat(balance).toLocaleString()}</h3>
+            
+            <div className="flex items-center gap-4 text-sm font-medium">
+              <div className="bg-white/20 px-3 py-1 rounded-full flex items-center gap-2">
+                <div className="h-2 w-2 rounded-full bg-green-400 animate-pulse" /> Active
+              </div>
+              <p className="text-primary-foreground/60">{userId}</p>
+            </div>
           </div>
         </div>
 
-        {/* Sticky Bottom Bar */}
-        <div className="sticky-bottom-bar">
-          <div className="max-w-6xl mx-auto px-4 flex flex-col-reverse sm:flex-row gap-2 sm:gap-3 justify-end">
-            <Button
-              type="button"
-              variant="outline"
-              onClick={handleReset}
-              disabled={isSubmitting}
-              className="w-full sm:w-auto"
-            >
-              <RotateCcw className="h-4 w-4 mr-2" aria-hidden="true" />
-              Reset
-            </Button>
-            <Button
-              type="submit"
-              disabled={!isValid || isSubmitting}
-              className="w-full sm:w-auto sm:min-w-[160px]"
-            >
-              {isSubmitting ? (
-                "Processing..."
-              ) : (
-                <>
-                  <Send className="h-4 w-4 mr-2" aria-hidden="true" />
-                  Submit Transaction
-                </>
-              )}
-            </Button>
+        <div className="bg-card border rounded-3xl p-6">
+          <h4 className="font-bold mb-4 flex items-center gap-2">
+            <Landmark className="h-4 w-4" /> Security Status
+          </h4>
+          <div className="space-y-4">
+            <div className="flex items-center gap-3">
+              <div className="p-2 bg-success/10 text-success rounded-lg">
+                <CreditCard className="h-4 w-4" />
+              </div>
+              <div>
+                <p className="text-sm font-bold">2FA Enabled</p>
+                <p className="text-xs text-muted-foreground">Biometric primary authentication</p>
+              </div>
+            </div>
           </div>
         </div>
-
-        {/* Spacer for sticky bar */}
-        <div className="h-20" aria-hidden="true" />
-      </form>
-
-      {/* Processing Modal */}
-      <ProcessingModal
-        isOpen={showProcessingModal}
-        onComplete={handleProcessingComplete}
-      />
-    </>
+      </div>
+    </div>
   );
 }

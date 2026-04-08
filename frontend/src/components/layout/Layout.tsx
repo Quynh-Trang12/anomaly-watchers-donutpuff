@@ -1,6 +1,6 @@
 import { ReactNode, useEffect, useRef } from "react";
 import { useLocation } from "react-router-dom";
-import { Header } from "./Header";
+import { Navbar } from "./Navbar";
 import { Footer } from "./Footer";
 
 interface LayoutProps {
@@ -22,7 +22,7 @@ export function Layout({ children }: LayoutProps) {
 
   return (
     <div className="min-h-screen flex flex-col bg-background">
-      <Header />
+      <Navbar />
       <main ref={mainRef} className="flex-1" id="main-content">
         {children}
       </main>
