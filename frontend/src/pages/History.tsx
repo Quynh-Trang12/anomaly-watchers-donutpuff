@@ -73,22 +73,20 @@ export default function History() {
           </div>
           
           <div className="flex flex-col sm:flex-row gap-3">
-            {/* DEMO CONVENIENCE: Only Admins can switch views in the activity log */}
-            {isAdmin && (
-              <Select value={selectedAccountId} onValueChange={setSelectedAccountId}>
-                <SelectTrigger className="w-full sm:w-64 rounded-xl h-10">
-                  <User className="h-4 w-4 mr-2 text-muted-foreground" />
-                  <SelectValue placeholder="Choose account..." />
-                </SelectTrigger>
-                <SelectContent>
-                  {MOCK_USERS.map((user) => (
-                    <SelectItem key={user.id} value={user.id}>
-                      {user.name} ({user.id})
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            )}
+            {/* DEMO CONVENIENCE: Account switcher is visible to everyone in the activity log */}
+            <Select value={selectedAccountId} onValueChange={setSelectedAccountId}>
+              <SelectTrigger className="w-full sm:w-64 rounded-xl h-10">
+                <User className="h-4 w-4 mr-2 text-muted-foreground" />
+                <SelectValue placeholder="Choose account..." />
+              </SelectTrigger>
+              <SelectContent>
+                {MOCK_USERS.map((user) => (
+                  <SelectItem key={user.id} value={user.id}>
+                    {user.name} ({user.id})
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
             <Select value={statusFilter} onValueChange={setStatusFilter}>
               <SelectTrigger className="w-full sm:w-[180px] rounded-xl h-10">
                 <Filter className="h-4 w-4 mr-2" />
