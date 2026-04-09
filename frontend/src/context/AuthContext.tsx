@@ -1,5 +1,12 @@
 import React, { createContext, useContext, useState, ReactNode } from "react";
 
+/**
+ * AnomalyWatchers Demo Auth Provider
+ * NOTE: This is NOT a real authentication system. 
+ * This context serves as a global state to simulate different roles (USER/ADMIN) 
+ * for demonstration purposes. Security logic is bypassed for the project demo.
+ */
+
 export type UserRole = "USER" | "ADMIN";
 
 interface AuthContextType {
@@ -12,6 +19,7 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
+// Personas used for the simulation demos
 export const MOCK_USERS = [
   { id: "student_sam", name: "Student Sam", display_balance_label: "Student Account" },
   { id: "student_lina", name: "Student Lina", display_balance_label: "Student Account" },
@@ -36,6 +44,7 @@ export const MOCK_USERS = [
 ];
 
 export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
+  // Start the demo as a standard retail user
   const [role, setRole] = useState<UserRole>("USER");
   const [userId, setUserId] = useState<string>(MOCK_USERS[0].id);
 

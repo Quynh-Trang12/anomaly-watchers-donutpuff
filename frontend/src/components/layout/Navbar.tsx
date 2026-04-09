@@ -21,37 +21,39 @@ export const Navbar: React.FC = () => {
           </Link>
 
           <div className="hidden md:flex items-center gap-1">
-            <Button variant="ghost" asChild className="gap-2 font-medium">
-              <Link to="/dashboard">
-                <Activity className="h-4 w-4" />
-                Monitor
-              </Link>
-            </Button>
-            <Button variant="ghost" asChild className="gap-2 font-medium">
-              <Link to="/simulate">
-                <LayoutDashboard className="h-4 w-4" />
-                Wallet
-              </Link>
-            </Button>
+            {/* ADMIN-ONLY NAVIGATION */}
+            {isAdmin && (
+              <Button variant="ghost" asChild className="gap-2 font-medium">
+                <Link to="/dashboard">
+                  <Activity className="h-4 w-4" />
+                  Monitor
+                </Link>
+              </Button>
+            )}
+
+            {/* USER-ONLY NAVIGATION */}
+            {!isAdmin && (
+              <Button variant="ghost" asChild className="gap-2 font-medium">
+                <Link to="/simulate">
+                  <LayoutDashboard className="h-4 w-4" />
+                  Wallet
+                </Link>
+              </Button>
+            )}
+
+            {/* SHARED NAVIGATION */}
             <Button variant="ghost" asChild className="gap-2 font-medium">
               <Link to="/history">
                 <History className="h-4 w-4" />
                 History
               </Link>
             </Button>
-            {isAdmin && (
-              <Button variant="ghost" asChild className="gap-2 font-medium">
-                <Link to="/admin">
-                  <Shield className="h-4 w-4" />
-                  Admin Console
-                </Link>
-              </Button>
-            )}
           </div>
         </div>
 
         <div className="flex items-center gap-4">
-          <div className="flex items-center bg-muted p-1 rounded-full border shadow-sm">
+          {/* DEMO-ONLY ROLE SWITCHER: Preserved for presentation convenience */}
+          <div className="flex items-center bg-muted p-1 rounded-full border shadow-sm" title="Demo Role Toggle">
             <Button
               size="sm"
               variant={role === "USER" ? "default" : "ghost"}
@@ -72,10 +74,6 @@ export const Navbar: React.FC = () => {
               Admin
             </Button>
           </div>
-
-          <Button variant="outline" size="icon" className="rounded-full">
-            <Power className="h-4 w-4" />
-          </Button>
         </div>
       </div>
     </nav>

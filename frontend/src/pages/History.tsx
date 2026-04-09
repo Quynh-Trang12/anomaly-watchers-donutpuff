@@ -69,23 +69,26 @@ export default function History() {
               <HistoryIcon className="h-8 w-8 text-primary" />
               Activity Log
             </h1>
-            <p className="text-muted-foreground mt-1">Review your recent transaction history and security status.</p>
+            <p className="text-muted-foreground mt-1">Review transaction history and status snapshots.</p>
           </div>
           
           <div className="flex flex-col sm:flex-row gap-3">
-            <Select value={selectedAccountId} onValueChange={setSelectedAccountId}>
-              <SelectTrigger className="w-full sm:w-64 rounded-xl h-10">
-                <User className="h-4 w-4 mr-2 text-muted-foreground" />
-                <SelectValue placeholder="Choose account..." />
-              </SelectTrigger>
-              <SelectContent>
-                {MOCK_USERS.map((user) => (
-                  <SelectItem key={user.id} value={user.id}>
-                    {user.name} ({user.id})
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            {/* DEMO CONVENIENCE: Only Admins can switch views in the activity log */}
+            {isAdmin && (
+              <Select value={selectedAccountId} onValueChange={setSelectedAccountId}>
+                <SelectTrigger className="w-full sm:w-64 rounded-xl h-10">
+                  <User className="h-4 w-4 mr-2 text-muted-foreground" />
+                  <SelectValue placeholder="Choose account..." />
+                </SelectTrigger>
+                <SelectContent>
+                  {MOCK_USERS.map((user) => (
+                    <SelectItem key={user.id} value={user.id}>
+                      {user.name} ({user.id})
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            )}
             <Select value={statusFilter} onValueChange={setStatusFilter}>
               <SelectTrigger className="w-full sm:w-[180px] rounded-xl h-10">
                 <Filter className="h-4 w-4 mr-2" />
