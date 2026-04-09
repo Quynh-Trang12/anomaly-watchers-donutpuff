@@ -156,10 +156,10 @@ def _build_risk_factors(
             )
         )
 
-    # 4. Security System Signal (No hardcoded threshold numbers in decision logic names)
+    # 4. Security System Signal
     ml_thresholds = config.get("ml_thresholds", {})
-    block_threshold = ml_thresholds.get("block_threshold", 0.5130)
-    step_up_threshold = ml_thresholds.get("step_up_threshold", 0.1000)
+    block_threshold = ml_thresholds.get("block_threshold", 0.8000)
+    step_up_threshold = ml_thresholds.get("step_up_threshold", 0.4000)
     
     if probability >= block_threshold:
         factors.append(
@@ -215,11 +215,11 @@ async def lifespan(app: FastAPI):
         except Exception as e:
             logger.error("Failed to load configuration: %s", e)
     else:
-        # Fallback defaults
+        # Fallback defaults - Relaxed for demo reliability
         app.state.system_configuration = {
             "ml_thresholds": {
-                "block_threshold": 0.5130,    # Maximizes F1-Score on PR curve
-                "step_up_threshold": 0.1000   # Maximizes Recall at 90% Precision
+                "block_threshold": 0.8000,    
+                "step_up_threshold": 0.4000   
             },
             "business_rules": {
                 "large_transfer_limit_amount": 150000.0,
@@ -490,15 +490,17 @@ async def predict_primary(transaction_input: TransactionInput, background_tasks:
     except Exception as execution_exception:
         logger.warning("Inference engine failure, using rule-based fallback: %s", execution_exception)
         is_using_fallback = True
-        # Rule 6. Fallback Behavior
-        if transaction_input.amount > 100000.0 or (transaction_input.amount / (transaction_input.oldbalanceOrg or 1) > 0.8):
-            probability_score = 0.51  # Trigger OTP
+        # Rule 6. Fallback Behavior - Demo Optimized
+        if transaction_input.amount > 150000.0 or (transaction_input.amount / (transaction_input.oldbalanceOrg or 1) > 0.9):
+            probability_score = 0.81  # Trigger Block
+        elif transaction_input.amount > 50000.0:
+            probability_score = 0.50  # Trigger OTP
         else:
             probability_score = 0.05
 
-    # 3. Decision Routing Logic & ID Generation
-    block_threshold = ml_thresholds.get("block_threshold", 0.5130)
-    step_up_threshold = ml_thresholds.get("step_up_threshold", 0.1000)
+    # 3. Decision Routing Logic & ID Generation - Demo Optimized
+    block_threshold = ml_thresholds.get("block_threshold", 0.8000)
+    step_up_threshold = ml_thresholds.get("step_up_threshold", 0.4000)
     new_transaction_id = f"TXN-{uuid.uuid4().hex[:8].upper()}"
     risk_factors_list = _build_risk_factors(transaction_input, probability_score, system_configuration)
     
