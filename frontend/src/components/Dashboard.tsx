@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback } from "react";
 import { Layout } from "@/components/layout/Layout";
 import { Button } from "@/components/ui/button";
 import { motion, AnimatePresence } from "framer-motion";
+import { useAuth } from "@/context/AuthContext";
 import {
   BarChart,
   Bar,
@@ -18,7 +19,7 @@ import {
   ZAxis,
   ReferenceLine,
 } from "recharts";
-import { predictPrimary, TransactionInput, PredictionOutput, getActiveThresholds } from "../api";
+import { predictPrimary, TransactionInput, PredictionOutput, getActiveThresholds, getAllTransactionsAdmin, getUserOwnTransactions } from "../api";
 import {
   AlertTriangle,
   ShieldCheck,
@@ -106,6 +107,7 @@ const StatCard: React.FC<{
 // Dashboard Component
 // ---------------------------------------------------------------------------
 const Dashboard: React.FC = () => {
+  const { userId, isAdmin } = useAuth();
   const [stats, setStats] = useState<Stats>({ approved: 0, blocked: 0, pending: 0, total: 0 });
   const [liveData, setLiveData] = useState<LivePoint[]>([]);
   const [isSimulating, setIsSimulating] = useState(false);
@@ -114,16 +116,49 @@ const Dashboard: React.FC = () => {
   const [thresholds, setThresholds] = useState({ block_threshold: 0.5, step_up_threshold: 0.4 });
 
   useEffect(() => {
-    const fetchThresholds = async () => {
+    const fetchData = async () => {
       try {
-        const data = await getActiveThresholds();
-        setThresholds(data);
+        // Fetch thresholds
+        const thresholdData = await getActiveThresholds();
+        setThresholds(thresholdData);
+
+        // Load historical transaction data based on role
+        // ADMIN users see all transactions; regular users see only their own
+        let historicalData: any[];
+        if (isAdmin) {
+          historicalData = await getAllTransactionsAdmin(userId);
+        } else {
+          historicalData = await getUserOwnTransactions(userId, userId);
+        }
+        
+        // Transform historical data for the charts
+        const mappedData: LivePoint[] = historicalData.slice(-MAX_LIVE_POINTS).map(txn => ({
+          time: new Date(txn.timestamp).toLocaleTimeString(),
+          risk: txn.probability_score,
+          isFraud: txn.status === "BLOCKED",
+          amount: txn.amount,
+          status: txn.status
+        }));
+        setLiveData(mappedData);
+
+        // Update stats summary based on historical data
+        const summary = historicalData.reduce((acc, txn) => ({
+          approved: acc.approved + (txn.status === "APPROVED" ? 1 : 0),
+          blocked: acc.blocked + (txn.status === "BLOCKED" ? 1 : 0),
+          pending: acc.pending + (txn.status.startsWith("PENDING") ? 1 : 0),
+          total: acc.total + 1,
+        }), { approved: 0, blocked: 0, pending: 0, total: 0 });
+        
+        setStats(summary);
+        if (mappedData.length > 0) {
+          setCurrentRisk(mappedData[mappedData.length - 1].risk);
+        }
       } catch (error) {
-        console.error("Failed to fetch thresholds:", error);
+        console.error("Failed to fetch initial dashboard data:", error);
       }
     };
-    fetchThresholds();
-  }, []);
+    fetchData();
+  }, [userId, isAdmin]);
 
   // Generate a realistic fake transaction
   const generateTransaction = useCallback((): TransactionInput => {
@@ -205,7 +240,7 @@ const Dashboard: React.FC = () => {
   const distributionData = [
     { name: "Approved", count: stats.approved },
     { name: "Blocked", count: stats.blocked },
-    { name: "Pending", count: stats.pending },
+    { name: "Under Review", count: stats.pending },
   ];
 
 
@@ -245,10 +280,10 @@ const Dashboard: React.FC = () => {
         >
           <div>
             <h1 className="text-3xl font-bold tracking-tight text-foreground">
-              Live Risk Monitor
+              Transaction Security Monitoring
             </h1>
             <p className="text-muted-foreground mt-1">
-              Real-time fraud detection stream — Random Forest + Heuristic Engine
+              Real-time analysis of payment activity
             </p>
           </div>
 
@@ -259,13 +294,9 @@ const Dashboard: React.FC = () => {
                 initial={{ opacity: 0, scale: 0.9 }}
                 animate={{ opacity: 1, scale: 1 }}
                 exit={{ opacity: 0, scale: 0.9 }}
-                className={`px-3 py-1 rounded-full text-sm font-medium ${
-                  isSimulating
-                    ? "bg-success-muted text-success"
-                    : "bg-muted text-muted-foreground"
-                }`}
+                className={`px-3 py-1 rounded-full text-sm font-medium text-muted-foreground`}
               >
-                {isSimulating ? "System Active" : "System Standby"}
+                Last updated: {new Date().toLocaleTimeString()}
               </motion.span>
             </AnimatePresence>
 
@@ -358,10 +389,10 @@ const Dashboard: React.FC = () => {
             <div className="mb-6">
               <h2 className="text-lg font-bold text-foreground flex items-center gap-2">
                 <TrendingUp className="w-5 h-5 text-primary" />
-                Capital Velocity
+                Real-Time Risk Monitoring
               </h2>
               <p className="text-sm text-muted-foreground">
-                Financial flow tracking across system time-steps
+                Security risk score for each processed payment over time
               </p>
             </div>
             <div className="h-[300px] w-full">
@@ -372,9 +403,14 @@ const Dashboard: React.FC = () => {
                     vertical={false}
                     stroke="hsl(var(--border))"
                   />
-                  <XAxis dataKey="time" hide />
+                  <XAxis 
+                    dataKey="time" 
+                    tick={{ fontSize: 10, fill: "hsl(var(--muted-foreground))" }}
+                    minTickGap={30}
+                  />
                   <YAxis
-                    tickFormatter={(value: number) => `$${value > 1000 ? (value / 1000).toFixed(1) + 'k' : value.toFixed(0)}`}
+                    domain={[0, 1]}
+                    tickFormatter={(value: number) => `${(value * 100).toFixed(0)}%`}
                     tick={{
                       fontSize: 12,
                       fill: "hsl(var(--muted-foreground))",
@@ -389,17 +425,29 @@ const Dashboard: React.FC = () => {
                       color: "hsl(var(--card-foreground))",
                     }}
                     formatter={(value: number) => [
-                      formatCurrencyToUSD(value),
-                      "Transaction Amount",
+                      `${(value * 100).toFixed(1)}%`,
+                      "Risk Score",
                     ]}
                   />
                   <Line
                     type="monotone"
-                    dataKey="amount"
+                    dataKey="risk"
                     stroke="#3b82f6"
                     strokeWidth={2}
                     dot={false}
                     isAnimationActive={false}
+                  />
+                  <ReferenceLine 
+                    y={thresholds.block_threshold} 
+                    label={{ position: 'right', value: 'Auto-Block Limit', fill: '#ef4444', fontSize: 10 }} 
+                    stroke="#ef4444" 
+                    strokeDasharray="3 3" 
+                  />
+                  <ReferenceLine 
+                    y={thresholds.step_up_threshold} 
+                    label={{ position: 'right', value: 'Extra Verification Limit', fill: '#f59e0b', fontSize: 10 }} 
+                    stroke="#f59e0b" 
+                    strokeDasharray="3 3" 
                   />
                 </LineChart>
               </ResponsiveContainer>
@@ -415,10 +463,10 @@ const Dashboard: React.FC = () => {
           >
             <div className="mb-6">
               <h2 className="text-lg font-bold text-foreground">
-                Detection Distribution
+                Transaction Outcomes
               </h2>
               <p className="text-sm text-muted-foreground">
-                Fraud vs Legitimate probability distribution
+                Breakdown of security decisions across all processed payments
               </p>
             </div>
             <div className="h-[300px] w-full">
@@ -475,10 +523,10 @@ const Dashboard: React.FC = () => {
             <div className="mb-6">
               <h2 className="text-lg font-bold text-foreground flex items-center gap-2">
                 <TrendingUp className="w-5 h-5 text-primary" />
-                Risk Heatmap: Amount vs. Probability
+                Payment Amount vs. Risk Level
               </h2>
               <p className="text-sm text-muted-foreground">
-                Correlation between transaction size and security risk
+                Each dot represents one payment — higher and to the right means more suspicious
               </p>
             </div>
             <div className="h-[280px] w-full">
@@ -519,14 +567,18 @@ const Dashboard: React.FC = () => {
                     y={thresholds.block_threshold} 
                     stroke="#ef4444" 
                     strokeDasharray="5 5"
+                    label={{ value: 'Auto-Block Limit', position: 'right', fill: '#ef4444', fontSize: 10 }}
                   />
                   <Scatter name="Transactions" data={liveData} isAnimationActive={false}>
-                    {liveData.map((entry, index) => (
-                      <Cell 
-                        key={`cell-${index}`} 
-                        fill={entry.risk >= thresholds.block_threshold ? "#ef4444" : "#0f766e"} 
-                      />
-                    ))}
+                    {liveData.map((entry, index) => {
+                      let dotColor = "#0f766e"; // Green - low risk
+                      if (entry.risk >= thresholds.block_threshold) {
+                        dotColor = "#ef4444"; // Red - high risk
+                      } else if (entry.risk >= thresholds.step_up_threshold) {
+                        dotColor = "#f59e0b"; // Amber - medium risk
+                      }
+                      return <Cell key={`cell-${index}`} fill={dotColor} />;
+                    })}
                   </Scatter>
                 </ScatterChart>
               </ResponsiveContainer>
@@ -542,10 +594,10 @@ const Dashboard: React.FC = () => {
           >
             <div className="mb-6">
               <h2 className="text-lg font-bold text-foreground">
-                Latest XAI Risk Factors
+                Security Decision Factors
               </h2>
               <p className="text-sm text-muted-foreground">
-                Explainability output from the most recent transaction
+                Natural Language Explanation of the most recent activity
               </p>
             </div>
 
@@ -587,8 +639,8 @@ const Dashboard: React.FC = () => {
                   className="text-sm text-muted-foreground text-center py-12"
                 >
                   {isSimulating
-                    ? "Waiting for data..."
-                    : "Start the stream to see live XAI output"}
+                    ? "Waiting for activity..."
+                    : "Activate the stream to see real-time security analysis"}
                 </motion.p>
               )}
             </AnimatePresence>

@@ -57,12 +57,14 @@ class PredictionOutput(BaseModel):
 class TransactionRecord(BaseModel):
     transaction_id: str
     owner_user_id: str
+    destination_account_id: Optional[str] = None
     amount: float
     type: str
     status: TransactionStatusEnum
     probability_score: float
     timestamp: datetime
     risk_factors: List[RiskFactor]
+    otp_code: Optional[str] = None  # Stores OTP for PENDING_USER_OTP transactions
 
 
 class BusinessRulesUpdate(BaseModel):

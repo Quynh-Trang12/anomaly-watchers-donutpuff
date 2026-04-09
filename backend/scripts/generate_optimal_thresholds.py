@@ -52,8 +52,14 @@ def main():
     print("Calculating optimal thresholds...")
     precision, recall, thresholds = precision_recall_curve(y, probabilities)
     
-    # 1. Maximize F1-Score for Blocking
-    # Avoid division by zero
+    # ─────────────────────────────────────────────────────────────────────────────
+    # THRESHOLD 1: Block Threshold (Maximizes F1-Score on PR Curve)
+    # ─────────────────────────────────────────────────────────────────────────────
+    # The F1-Score is the harmonic mean of Precision and Recall:
+    #     F1 = 2 × (Precision × Recall) / (Precision + Recall)
+    # We select the probability threshold where F1 is maximized on the validation
+    # set. This gives the best balance between catching fraud (recall) and not
+    # falsely blocking legitimate transactions (precision).
     f1_scores = 2 * (precision * recall) / (precision + recall + 1e-10)
     best_f1_index = np.argmax(f1_scores)
     # thresholds has len(precision) - 1
@@ -61,23 +67,29 @@ def main():
         block_threshold = float(thresholds[best_f1_index])
     else:
         block_threshold = float(thresholds[-1])
-
-    # 2. Maximize Recall at 90% Precision for Step-Up Verification
-    # We want the lowest threshold where precision is >= 0.90
-    precision_90_indices = np.where(precision >= 0.90)[0]
-    if len(precision_90_indices) > 0:
-        idx = precision_90_indices[0]
-        if idx < len(thresholds):
-            step_up_threshold = float(thresholds[idx])
-        else:
-            step_up_threshold = float(thresholds[-1])
+    
+    # ─────────────────────────────────────────────────────────────────────────────
+    # THRESHOLD 2: Step-Up Threshold (Maximizes Recall at 90% Precision)
+    # ─────────────────────────────────────────────────────────────────────────────
+    # We want to catch as many suspicious transactions as possible (high recall)
+    # while ensuring that when we ask users for extra verification, we are right
+    # at least 90% of the time (precision ≥ 90%). This minimizes user friction
+    # while maintaining security coverage for the majority of genuine fraud.
+    indices_meeting_precision_target = np.where(precision >= 0.90)[0]
+    if len(indices_meeting_precision_target) > 0:
+        earliest_qualifying_index = indices_meeting_precision_target[0]
+        step_up_threshold = float(thresholds[min(earliest_qualifying_index, len(thresholds) - 1)])
     else:
-        # Fallback if 90% precision is never reached
+        # Fallback: use half the block threshold if 90% precision is never achieved
         step_up_threshold = float(block_threshold * 0.5)
+        print(f"Warning: 90% precision target not achievable. Using fallback: {step_up_threshold:.4f}")
 
-    # Hard engineering constraints: step_up must be <= block
-    step_up_threshold = min(step_up_threshold, block_threshold)
-
+    # Architectural constraint: step_up must always be strictly less than block
+    step_up_threshold = min(step_up_threshold, block_threshold * 0.99)
+    
+    print(f"Optimal Thresholds Derived — Block: {block_threshold:.4f}, Step-Up: {step_up_threshold:.4f}")
+    
+    # Save results
     configuration = {
         "model_metadata": {
             "model_version": "2.0.0",

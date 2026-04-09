@@ -1,6 +1,7 @@
 import { useState } from "react";
 import axios from "axios";
 import { useNavigate } from "react-router-dom";
+import { motion, AnimatePresence } from "framer-motion";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -69,15 +70,52 @@ export function TransactionForm({ onTransactionApproved, refreshTrigger }: Trans
     setAmountDisplayValue(formatted_integer + decimal_suffix);
   };
 
+  const parsed_amount_for_preview = parseFloat(amountRawValue) || 0;
+  const projected_balance = currentBalance - parsed_amount_for_preview;
+  const is_insufficient_funds = parsed_amount_for_preview > currentBalance;
+  const is_low_balance_warning = projected_balance < 1000 && projected_balance >= 0;
+
+  const validate_transaction_form = (): string | null => {
+    const parsed_amount = parseFloat(amountRawValue);
+    
+    // Rule 1: Amount must be a positive number
+    if (isNaN(parsed_amount) || parsed_amount <= 0) {
+      return "Please enter a valid transfer amount greater than $0.00.";
+    }
+
+    // Rule 2: Amount must not exceed current balance
+    if (parsed_amount > currentBalance) {
+      return `This amount exceeds your available balance of ${formatCurrencyToUSD(currentBalance)}.`;
+    }
+
+    // Rule 3: Destination account must not be the same as the sender
+    if (targetAccount.trim() === userId) {
+      return "You cannot transfer money to your own account. Please enter a different recipient.";
+    }
+
+    // Rule 4: Destination account must be provided
+    if (!targetAccount.trim()) {
+      return "Please enter a recipient account ID.";
+    }
+
+    // Rule 5: Amount must be greater than $0.01 (minimum transaction)
+    if (parsed_amount < 0.01) {
+      return "The minimum transfer amount is $0.01.";
+    }
+
+    return null; // All validations passed
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
-    const parsed_amount = parseFloat(amountRawValue);
-    if (isNaN(parsed_amount) || parsed_amount <= 0) {
-      toast.error("Please enter a valid amount greater than $0.00.");
+    const validation_error_message = validate_transaction_form();
+    if (validation_error_message) {
+      toast.error(validation_error_message);
       return;
     }
 
+    const parsed_amount = parseFloat(amountRawValue);
     setIsSubmitting(true);
     try {
       const transaction_payload: TransactionInput = {
@@ -87,7 +125,7 @@ export function TransactionForm({ onTransactionApproved, refreshTrigger }: Trans
         newbalanceOrig: currentBalance - parsed_amount,
         oldbalanceDest: 0,
         newbalanceDest: parsed_amount,
-        user_id: userId || "user_1",
+        user_id: userId,
         destination_account_id: targetAccount
       };
       const prediction_result = await predictPrimary(transaction_payload);
@@ -158,11 +196,14 @@ export function TransactionForm({ onTransactionApproved, refreshTrigger }: Trans
               <Label>Recipient Account ID</Label>
               <Input 
                 placeholder="C123456789" 
-                className="h-12 rounded-xl font-mono"
+                className={`h-12 rounded-xl font-mono ${targetAccount.trim() === userId ? 'border-danger ring-danger' : ''}`}
                 value={targetAccount}
                 onChange={e => setTargetAccount(e.target.value)}
                 required
               />
+              {targetAccount.trim() === userId && (
+                 <p className="text-xs font-medium text-danger">You cannot transfer money to your own account.</p>
+              )}
             </div>
           </div>
 
@@ -176,10 +217,47 @@ export function TransactionForm({ onTransactionApproved, refreshTrigger }: Trans
                 placeholder="0.00"
                 value={amountDisplayValue}
                 onChange={handleAmountInputChange}
-                className="h-16 pl-10 text-2xl font-bold rounded-2xl bg-muted/30 w-full border border-input px-3 focus-visible:ring-2 focus-visible:ring-ring"
+                className={`h-16 pl-10 text-2xl font-bold rounded-2xl bg-muted/30 w-full border px-3 focus-visible:ring-2 focus-visible:ring-ring ${is_insufficient_funds ? 'border-danger focus-visible:ring-danger' : 'border-input'}`}
                 required
                 aria-label="Transaction amount in USD"
               />
+            </div>
+            
+            {/* Live Balance Preview */}
+            <div className="mt-4 p-4 rounded-xl bg-muted/20 border border-dashed text-sm">
+              <div className="flex justify-between items-center mb-1">
+                <span className="text-muted-foreground">Original Balance:</span>
+                <span className="font-mono">{formatCurrencyToUSD(currentBalance)}</span>
+              </div>
+              <div className="flex justify-between items-center font-bold">
+                <span className={is_insufficient_funds ? "text-danger" : is_low_balance_warning ? "text-warning" : "text-success"}>
+                  Projected Balance:
+                </span>
+                <span className={`font-mono ${is_insufficient_funds ? "text-danger" : is_low_balance_warning ? "text-warning" : "text-success"}`}>
+                  {formatCurrencyToUSD(projected_balance)}
+                </span>
+              </div>
+              
+              <AnimatePresence>
+                {is_insufficient_funds && (
+                  <motion.p 
+                    initial={{ opacity: 0, y: -5 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    className="text-xs font-bold text-danger mt-2"
+                  >
+                    This amount exceeds your available balance of {formatCurrencyToUSD(currentBalance)}.
+                  </motion.p>
+                )}
+                {!is_insufficient_funds && is_low_balance_warning && (
+                   <motion.p 
+                    initial={{ opacity: 0, y: -5 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    className="text-xs font-bold text-warning mt-2"
+                   >
+                     Warning: This will leave you with a low balance (under $1,000.00).
+                   </motion.p>
+                )}
+              </AnimatePresence>
             </div>
           </div>
 

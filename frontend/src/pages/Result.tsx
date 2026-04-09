@@ -51,7 +51,7 @@ export default function Result() {
       `Transaction ID: ${prediction.transaction_id}`,
       `Status: ${prediction.status}`,
       `Risk Level: ${prediction.risk_level}`,
-      `AI Probability Score: ${(prediction.probability * 100).toFixed(2)}%`,
+      `Confidence Level: ${(prediction.probability * 100).toFixed(2)}%`,
       `Timestamp: ${new Date().toLocaleString()}`,
       "",
       "--- Security Analysis ---",
@@ -123,15 +123,15 @@ export default function Result() {
             <p className="text-muted-foreground text-lg">{prediction.explanation}</p>
           </div>
 
-          {/* New Balance Card */}
+          {/* Verification / Review Reference Card */}
           <div className="bg-muted/50 border rounded-3xl p-6 flex flex-col md:flex-row md:items-center justify-between gap-4">
             <div className="flex items-center gap-4">
               <div className="p-3 bg-primary/10 rounded-2xl text-primary">
-                <Wallet className="h-6 w-6" />
+                <ShieldCheck className="h-6 w-6" />
               </div>
               <div>
-                <p className="text-sm text-muted-foreground uppercase tracking-wider font-bold">New Available Balance</p>
-                <h2 className="text-2xl font-black">{formatCurrencyToUSD(oldbalanceOrig - amount)}</h2>
+                <p className="text-sm text-muted-foreground uppercase tracking-wider font-bold">Confidence level</p>
+                <h2 className="text-2xl font-black">{(prediction.probability * 100).toFixed(1)}%</h2>
               </div>
             </div>
             <div className="text-right">
@@ -153,7 +153,11 @@ export default function Result() {
                   </p>
                 </div>
               </div>
-              <OTPChallenge onSuccess={handleOTPSuccess} onFail={handleOTPFail} />
+              <OTPChallenge 
+                transactionId={prediction.transaction_id}
+                onSuccess={handleOTPSuccess} 
+                onFail={handleOTPFail} 
+              />
             </div>
           )}
 

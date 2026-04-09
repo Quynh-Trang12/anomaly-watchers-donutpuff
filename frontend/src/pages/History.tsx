@@ -8,22 +8,35 @@ import {
   Filter, 
   ArrowUpRight, 
   ArrowDownLeft,
-  SearchX
+  SearchX,
+  ShieldCheck,
+  ShieldAlert,
+  Clock,
+  AlertTriangle
 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { formatCurrencyToUSD } from "@/lib/utils";
+import { useMemo } from "react";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 
 export default function History() {
   const { userId } = useAuth();
   const [transactions, setTransactions] = useState<TransactionRecord[]>([]);
   const [searchTerm, setSearchTerm] = useState("");
+  const [statusFilter, setStatusFilter] = useState<string>("ALL");
   const [isLoading, setIsLoading] = useState(true);
 
   const loadTransactions = useCallback(async () => {
     setIsLoading(true);
     try {
-      const data = await getUserTransactions(userId);
+      const data = await getUserTransactions(userId, userId);
       setTransactions(data);
     } catch (err) {
       console.error(err);
@@ -36,10 +49,25 @@ export default function History() {
     loadTransactions();
   }, [loadTransactions]);
 
-  const filteredTransactions = transactions.filter(t => 
-    t.transaction_id.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    t.type.toLowerCase().includes(searchTerm.toLowerCase())
-  );
+  const filteredTransactions = useMemo(() => {
+    return transactions.filter((transaction) => {
+      // 1. Filter by Status
+      if (statusFilter !== "ALL" && transaction.status !== statusFilter) {
+        return false;
+      }
+      
+      // 2. Filter by Search Term
+      const search_term_lower = searchTerm.toLowerCase().trim();
+      if (!search_term_lower) return true;
+      
+      return [
+        transaction.transaction_id,
+        transaction.type,
+        transaction.status.replace(/_/g, " "),
+        transaction.amount.toFixed(2),
+      ].some((field) => field.toLowerCase().includes(search_term_lower));
+    });
+  }, [transactions, searchTerm, statusFilter]);
 
   return (
     <Layout>
@@ -53,8 +81,8 @@ export default function History() {
             <p className="text-muted-foreground mt-1">Review your recent transaction history and security status.</p>
           </div>
           
-          <div className="flex gap-2">
-            <div className="relative w-full md:w-64">
+          <div className="flex flex-col sm:flex-row gap-3">
+            <div className="relative w-full sm:w-64">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
               <Input 
                 placeholder="Search history..." 
@@ -63,9 +91,19 @@ export default function History() {
                 onChange={e => setSearchTerm(e.target.value)}
               />
             </div>
-            <Button variant="outline" size="icon" className="rounded-xl">
-              <Filter className="h-4 w-4" />
-            </Button>
+            <Select value={statusFilter} onValueChange={setStatusFilter}>
+              <SelectTrigger className="w-full sm:w-[180px] rounded-xl h-10">
+                <Filter className="h-4 w-4 mr-2" />
+                <SelectValue placeholder="All Statuses" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="ALL">All Statuses</SelectItem>
+                <SelectItem value="APPROVED">Approved</SelectItem>
+                <SelectItem value="BLOCKED">Blocked</SelectItem>
+                <SelectItem value="PENDING_ADMIN_REVIEW">Pending Review</SelectItem>
+                <SelectItem value="PENDING_USER_OTP">Pending Verification</SelectItem>
+              </SelectContent>
+            </Select>
           </div>
         </header>
 

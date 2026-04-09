@@ -16,9 +16,22 @@ internal_account_registry: Dict[str, float] = {
     "user_4": 75000.00,
 }
 
+# Email mapping for OTP delivery — maps mock user IDs to real email addresses
+# Configure these email addresses for OTP testing with real email providers
+user_email_registry: Dict[str, str] = {
+    "user_1": "user_1@example.com",           # Change to your email for testing
+    "user_2": "user_2@example.com",           # Change to your email for testing
+    "user_3": "user_3@example.com",           # Change to your email for testing
+    "user_4": "quynhtranglengoc@gmail.com",   # YOUR ACTUAL GMAIL ADDRESS
+}
+
 def get_account_balance(user_id: str) -> Optional[float]:
     """Returns the current balance for a registered internal account, or None if not found."""
     return internal_account_registry.get(user_id)
+
+def get_user_email(user_id: str) -> Optional[str]:
+    """Returns the email address for a registered user for OTP delivery."""
+    return user_email_registry.get(user_id)
 
 def deduct_account_balance(user_id: str, amount: float) -> float:
     """Deducts the transaction amount from the originator's balance. Raises ValueError if insufficient funds."""
@@ -27,6 +40,25 @@ def deduct_account_balance(user_id: str, amount: float) -> float:
     if internal_account_registry[user_id] < amount:
         raise ValueError(f"Insufficient funds for account '{user_id}'.")
     internal_account_registry[user_id] -= amount
+    return internal_account_registry[user_id]
+
+def credit_account_balance(user_id: str, amount: float) -> float:
+    """
+    Credits the transaction amount to the recipient's account balance.
+
+    Args:
+        user_id: The internal account identifier of the recipient.
+        amount: The positive dollar amount to credit.
+
+    Returns:
+        The recipient's updated balance after crediting.
+
+    Raises:
+        ValueError: If the recipient account is not found in the internal registry.
+    """
+    if user_id not in internal_account_registry:
+        raise ValueError(f"Recipient account '{user_id}' not found in the internal network.")
+    internal_account_registry[user_id] += amount
     return internal_account_registry[user_id]
 
 def save_transaction(transaction: TransactionRecord):

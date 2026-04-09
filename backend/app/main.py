@@ -13,10 +13,11 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
+import random
 import joblib
 import numpy as np
 import pandas as pd
-from fastapi import FastAPI, HTTPException, BackgroundTasks
+from fastapi import FastAPI, HTTPException, BackgroundTasks, Query
 from fastapi.middleware.cors import CORSMiddleware
 
 from .preprocessing import build_feature_matrix
@@ -40,7 +41,10 @@ from .db import (
     get_all_transactions,
     update_transaction_status,
     get_account_balance,
-    deduct_account_balance
+    deduct_account_balance,
+    credit_account_balance,
+    get_transaction,
+    get_user_email
 )
 from .services.mail_service import send_security_alert_email
 
@@ -127,7 +131,7 @@ def _build_risk_factors(
     if payload.amount >= large_amount_limit:
         factors.append(
             RiskFactor(
-                factor=f"This transfer of ${payload.amount:,.2f} is significantly higher than your typical transaction range.",
+                factor=f"This transfer of ${payload.amount:,.2f} is larger than your usual transaction range and requires additional review.",
                 severity="warning",
             )
         )
@@ -136,10 +140,9 @@ def _build_risk_factors(
     if payload.oldbalanceOrg > 0:
         drain_ratio = payload.amount / payload.oldbalanceOrg
         if drain_ratio >= 0.95:
-            drain_percentage = min(drain_ratio * 100, 100)
             factors.append(
                 RiskFactor(
-                    factor=f"This transfer of ${payload.amount:,.2f} will use up {drain_percentage:.0f}% of the money currently in your account.",
+                    factor="This payment would use up most of your available balance. Please confirm this is intentional.",
                     severity="danger",
                 )
             )
@@ -148,27 +151,27 @@ def _build_risk_factors(
     if payload.type in {"TRANSFER", "CASH OUT"} and payload.oldbalanceDest == 0 and payload.amount > 10000:
         factors.append(
             RiskFactor(
-                factor="Sending a large sum to an account with no prior history can be a sign of unauthorized access.",
+                factor="Sending a large amount to a recipient with no prior activity is unusual and has been flagged for your safety.",
                 severity="warning",
             )
         )
 
-    # 4. ML Signal
+    # 4. Security System Signal (No hardcoded threshold numbers in decision logic names)
     ml_thresholds = config.get("ml_thresholds", {})
-    block_threshold = ml_thresholds.get("block_threshold", 0.5)
-    step_up_threshold = ml_thresholds.get("step_up_threshold", 0.4)
+    block_threshold = ml_thresholds.get("block_threshold", 0.5130)
+    step_up_threshold = ml_thresholds.get("step_up_threshold", 0.1000)
     
     if probability >= block_threshold:
         factors.append(
             RiskFactor(
-                factor="Our security system has detected activity that looks very different from your usual spending habits.",
+                factor="Our security system has flagged this payment as highly unusual based on your account's typical activity.",
                 severity="danger",
             )
         )
     elif probability >= step_up_threshold:
         factors.append(
             RiskFactor(
-                factor="We've noticed some unusual details in this request and need to double-check its security.",
+                factor="This payment looks a little different from your usual activity. We just need to confirm it's really you.",
                 severity="warning",
             )
         )
@@ -176,7 +179,7 @@ def _build_risk_factors(
     if not factors:
         factors.append(
             RiskFactor(
-                factor="Standard security checks complete. Your transaction appears consistent with normal usage.",
+                factor="All security checks passed. This payment looks consistent with your normal activity.",
                 severity="info",
             )
         )
@@ -214,13 +217,24 @@ async def lifespan(app: FastAPI):
     else:
         # Fallback defaults
         app.state.system_configuration = {
-            "ml_thresholds": {"block_threshold": 0.5130, "step_up_threshold": 0.10},
+            "ml_thresholds": {
+                "block_threshold": 0.5130,    # Maximizes F1-Score on PR curve
+                "step_up_threshold": 0.1000   # Maximizes Recall at 90% Precision
+            },
             "business_rules": {
                 "large_transfer_limit_amount": 150000.0,
                 "daily_velocity_limit": 500000.0,
                 "restricted_flagged_status": True
             }
         }
+    
+    # Log loaded thresholds to verify configuration
+    loaded_thresholds = app.state.system_configuration.get("ml_thresholds", {})
+    logger.info(
+        "Decision thresholds loaded — Block: %.4f, Step-Up: %.4f",
+        loaded_thresholds.get("block_threshold", 0.0),
+        loaded_thresholds.get("step_up_threshold", 0.0)
+    )
     
     yield
     model_registry.clear()
@@ -311,18 +325,96 @@ async def get_admin_audit_log():
     return get_audit_logs()
 
 @app.get("/api/admin/transactions", response_model=List[TransactionRecord])
-async def get_all_transactions_admin():
+async def get_all_transactions_admin(requesting_user_id: str = Query("")):
+    """
+    Returns all transactions in the system.
+    ADMIN-ONLY: Only users with 'admin' prefix can access this endpoint.
+    """
+    # In a production system, this would use JWT token validation.
+    # For this simulation, we enforce admin-only access via the requesting_user_id param.
+    is_admin_request = requesting_user_id.startswith("admin")
+    if not is_admin_request:
+        raise HTTPException(
+            status_code=403,
+            detail="Access denied. Only admins can view all transactions."
+        )
     return get_all_transactions()
 
 @app.get("/api/transactions/{user_id}", response_model=List[TransactionRecord])
-async def get_transactions_history(user_id: str):
+async def get_transactions_history(user_id: str, requesting_user_id: str = Query("")):
+    """
+    Returns transaction history for the specified user account.
+    For security, users may only access their own transaction history.
+    Admins (identified by the 'admin' prefix) may access any account.
+    """
+    # In a production system, this would use JWT token validation.
+    # For this simulation, we enforce user isolation via the requesting_user_id param.
+    is_admin_request = requesting_user_id.startswith("admin")
+    if not is_admin_request and requesting_user_id and requesting_user_id != user_id:
+        raise HTTPException(
+            status_code=403,
+            detail="Access denied. You may only view your own transaction history."
+        )
     return get_user_transactions(user_id)
 
 @app.post("/api/transactions/{transaction_id}/action")
 async def transaction_action(transaction_id: str, action: str, admin_id: str = "admin_1"):
+    """
+    Manual override for transactions in PENDING_ADMIN_REVIEW.
+    Approving a transaction here triggers the definitive ledger update.
+    """
     status = TransactionStatusEnum.APPROVED if action == "approve" else TransactionStatusEnum.BLOCKED
+    
+    # Execute ledger changes if approved
+    if status == TransactionStatusEnum.APPROVED:
+        txn = get_transaction(transaction_id)
+        if txn:
+            try:
+                deduct_account_balance(txn.owner_user_id, txn.amount)
+                if txn.destination_account_id:
+                    credit_account_balance(txn.destination_account_id, txn.amount)
+            except ValueError as ledger_error:
+                logger.warning("Admin approval ledger update failed: %s", ledger_error)
+                raise HTTPException(status_code=400, detail=str(ledger_error))
+
     update_transaction_status(transaction_id, status, admin_id=admin_id)
-    return {"status": "success", "transaction_id": transaction_id, "new_status": status}
+    return {
+        "status": "success", 
+        "transaction_id": transaction_id, 
+        "new_status": status,
+        "message": f"Transaction has been manually {'released' if action == 'approve' else 'blocked'} by administration."
+    }
+
+@app.get("/api/debug/fraud_probe")
+async def debug_fraud_probe():
+    """
+    Development diagnostic endpoint: sends a known high-risk pattern through
+    the ML engine and returns the raw probability score.
+    """
+    test_frame = pd.DataFrame([{
+        "step": 1,
+        "type": "CASH OUT",
+        "amount": 200000.0,
+        "nameOrig": "C_origin_user_1",
+        "oldbalanceOrg": 200000.0,
+        "newbalanceOrig": 0.0,
+        "nameDest": "C_dest_demo",
+        "oldbalanceDest": 0.0,
+        "newbalanceDest": 0.0,
+    }])
+    feature_matrix = build_feature_matrix(test_frame)
+    feature_matrix = _align_features(feature_matrix)
+    raw_probability = _predict_probability(model_registry["random_forest"], feature_matrix)
+    
+    ml_thresholds = app.state.system_configuration.get("ml_thresholds", {})
+    block_threshold = ml_thresholds.get("block_threshold", 0.5130)
+    
+    return {
+        "test_pattern": "CASH_OUT full account drain $200,000",
+        "raw_probability_score": raw_probability,
+        "current_block_threshold": block_threshold,
+        "expected_decision": "BLOCKED" if raw_probability >= block_threshold else "REVIEW"
+    }
 
 @app.get("/api/security/freeze")
 async def freeze_account(id: str):
@@ -356,11 +448,14 @@ async def predict_primary(transaction_input: TransactionInput, background_tasks:
 
     # 0b. Validate that the destination account exists in the internal network
     if transaction_input.destination_account_id:
+        if transaction_input.destination_account_id == transaction_input.user_id:
+            raise HTTPException(status_code=400, detail="You cannot transfer money to your own account.")
+            
         destination_balance = get_account_balance(transaction_input.destination_account_id)
         if destination_balance is None:
             raise HTTPException(
                 status_code=400,
-                detail="Recipient account not found in internal network."
+                detail="Recipient account not found in internal network. Please verify the account ID."
             )
 
     # 1. Automated Step Calculation
@@ -384,29 +479,33 @@ async def predict_primary(transaction_input: TransactionInput, background_tasks:
         feature_matrix = _align_features(feature_matrix)
         probability_score = _predict_probability(model_registry["random_forest"], feature_matrix)
     except Exception as execution_exception:
-        raise HTTPException(status_code=400, detail=f"Inference Engine Error: {execution_exception}")
+        logger.error("Inference Engine Error: %s", execution_exception)
+        raise HTTPException(status_code=503, detail="Security analysis engine is temporarily unavailable.")
 
     # 3. Decision Routing Logic & ID Generation
-    block_threshold = ml_thresholds.get("block_threshold", 0.5)
-    step_up_threshold = ml_thresholds.get("step_up_threshold", 0.4)
+    block_threshold = ml_thresholds.get("block_threshold", 0.5130)
+    step_up_threshold = ml_thresholds.get("step_up_threshold", 0.1000)
     new_transaction_id = f"TXN-{uuid.uuid4().hex[:8].upper()}"
     risk_factors_list = _build_risk_factors(transaction_input, probability_score, system_configuration)
     large_transfer_limit = business_rules.get("large_transfer_limit_amount", 150000.0)
     
     transaction_status = TransactionStatusEnum.APPROVED
     operation_explanation = "Everything looks good! Your transaction has been securely processed."
+    security_otp_code = None  # Will be set if OTP needed
     
     if probability_score >= block_threshold:
         transaction_status = TransactionStatusEnum.BLOCKED
         operation_explanation = "For your protection, this transaction has been declined. It doesn't match your usual activity."
     elif probability_score >= step_up_threshold:
         transaction_status = TransactionStatusEnum.PENDING_USER_OTP
-        operation_explanation = "We just want to make sure it's really you. We've sent a 6-digit security code to your email."
-        # Trigger OOB Authentication
-        security_otp_code = secrets.token_hex(3).upper() # 6-digit hex code
+        operation_explanation = "This payment looks a little different from your usual activity. We just need to confirm it's really you. We've sent a 6-digit security code to your email."
+        # Generate a 6-digit numeric OTP — compatible with the numeric OTP input component
+        security_otp_code = str(random.randint(100000, 999999))
+        # Get the actual email address configured for this user
+        recipient_email = get_user_email(transaction_input.user_id) or f"{transaction_input.user_id}@example.com"
         background_tasks.add_task(
             send_security_alert_email,
-            recipient_email=f"{transaction_input.user_id}@example.com",
+            recipient_email=recipient_email,
             otp_code=security_otp_code,
             transaction_details={
                 "amount": transaction_input.amount, 
@@ -427,23 +526,26 @@ async def predict_primary(transaction_input: TransactionInput, background_tasks:
     transaction_record_entry = TransactionRecord(
         transaction_id=new_transaction_id,
         owner_user_id=transaction_input.user_id,
+        destination_account_id=transaction_input.destination_account_id,
         amount=transaction_input.amount,
         type=transaction_input.type,
         status=transaction_status,
         probability_score=probability_score,
         timestamp=datetime.now(),
-        risk_factors=risk_factors_list
+        risk_factors=risk_factors_list,
+        otp_code=security_otp_code  # Store OTP if needed for verification
     )
     save_transaction(transaction_record_entry)
 
-    # 5. Deduct balance for APPROVED transactions
+    # 5. Execute ledger changes for APPROVED transactions (Bidirectional)
     if transaction_status == TransactionStatusEnum.APPROVED:
         try:
             deduct_account_balance(transaction_input.user_id, transaction_input.amount)
-        except ValueError as deduction_error:
-            # This handles the case where balance changed between validation and completion
-            logger.warning("Balance deduction failed for %s: %s", transaction_input.user_id, deduction_error)
-            # In a real system we would roll back the transaction record, but for this simulation we just log it.
+            if transaction_input.destination_account_id:
+                credit_account_balance(transaction_input.destination_account_id, transaction_input.amount)
+        except ValueError as ledger_error:
+            logger.warning("Ledger update failed for %s: %s", transaction_input.user_id, ledger_error)
+            # In a real system we would roll back the transaction record.
 
     return PredictionOutput(
         probability=probability_score,
@@ -454,3 +556,46 @@ async def predict_primary(transaction_input: TransactionInput, background_tasks:
         risk_factors=risk_factors_list,
         transaction_id=new_transaction_id
     )
+
+@app.post("/api/verify-otp")
+async def verify_otp(transaction_id: str, user_provided_otp: str):
+    """
+    Verify the user-provided OTP against the stored OTP and update transaction status.
+    Returns success if OTP matches, otherwise returns error.
+    """
+    transaction = get_transaction(transaction_id)
+    
+    if not transaction:
+        raise HTTPException(status_code=404, detail=f"Transaction {transaction_id} not found.")
+    
+    if transaction.status != TransactionStatusEnum.PENDING_USER_OTP:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Transaction {transaction_id} is not pending OTP verification (current status: {transaction.status})."
+        )
+    
+    if not transaction.otp_code:
+        raise HTTPException(status_code=400, detail="No OTP stored for this transaction.")
+    
+    if user_provided_otp != transaction.otp_code:
+        logger.warning(f"OTP verification failed for transaction {transaction_id}: incorrect code provided")
+        raise HTTPException(status_code=401, detail="Incorrect security code. Please check and try again.")
+    
+    # OTP is correct - update transaction to APPROVED and execute ledger
+    logger.info(f"OTP verification succeeded for transaction {transaction_id}")
+    update_transaction_status(transaction_id, TransactionStatusEnum.APPROVED)
+    
+    # Execute ledger changes (Bidirectional)
+    try:
+        deduct_account_balance(transaction.owner_user_id, transaction.amount)
+        if transaction.destination_account_id:
+            credit_account_balance(transaction.destination_account_id, transaction.amount)
+    except ValueError as ledger_error:
+        logger.error(f"Ledger update failed for OTP verification on {transaction_id}: {ledger_error}")
+        raise HTTPException(status_code=400, detail=f"Transaction processing failed: {str(ledger_error)}")
+    
+    return {
+        "status": "success",
+        "message": "Security verification complete. Your transaction has been approved.",
+        "transaction_id": transaction_id
+    }

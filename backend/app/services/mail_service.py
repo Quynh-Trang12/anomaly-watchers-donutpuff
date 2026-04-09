@@ -18,11 +18,12 @@ async def send_security_alert_email(recipient_email: str, otp_code: str, transac
     transaction_id = transaction_details.get("transaction_id", "UNKNOWN")
 
     message = MIMEMultipart("alternative")
-    message["Subject"] = "🚨 URGENT: Security Code for Your Transaction"
+    message["Subject"] = "🔐 Security Verification Required — AnomalyWatchers"
     message["From"] = f"Anomaly Watchers Security <{smtp_user}>"
     message["To"] = recipient_email
 
-    freeze_url = f"http://localhost:3000/api/security/freeze?id={transaction_id}"
+    # Point to backend port 8000 for emergency freeze functionality
+    freeze_url = f"http://localhost:8000/api/security/freeze?id={transaction_id}"
 
     html_content = f"""
     <html>
@@ -43,7 +44,7 @@ async def send_security_alert_email(recipient_email: str, otp_code: str, transac
 
             <p style="font-weight: 600; text-align: center; margin-bottom: 10px;">Your Verification Code:</p>
             <div style="text-align: center; margin-bottom: 30px;">
-              <div style="display: inline-block; background: #f1f5f9; border: 2px solid #3b82f6; color: #1d4ed8; font-size: 36px; font-weight: 800; padding: 15px 40px; border-radius: 12px; letter-spacing: 8px;">
+              <div style="display: inline-block; background: #f1f5f9; border: 2px solid #3b82f6; color: #1d4ed8; font-size: 36px; font-weight: 800; padding: 15px 40px; border-radius: 12px; font-family: monospace; letter-spacing: 8px;">
                 {otp_code}
               </div>
             </div>
@@ -81,4 +82,11 @@ async def send_security_alert_email(recipient_email: str, otp_code: str, transac
         # Fallback OOB Logging
         logger.error(f"OOB_AUTH_SMTP_FAILURE: Could not deliver email to {recipient_email}. Error: {e}")
         logger.warning(f"OOB_AUTH_FALLBACK_DELIVERY: [OTP_CODE: {otp_code}] [RECIPIENT: {recipient_email}]")
-        print(f"\n--- OOB SECURITY FALLBACK ---\nRECIPIENT: {recipient_email}\nOTP CODE: {otp_code}\n-----------------------------\n")
+        print(
+            f"\n{'='*50}\n"
+            f"  OOB SECURITY CODE — CHECK THIS TO TEST STEP-UP\n"
+            f"  Recipient : {recipient_email}\n"
+            f"  OTP Code  : {otp_code}\n"
+            f"  (Hint: Demo OTP in OTPChallenge.tsx is '123456')\n"
+            f"{'='*50}\n"
+        )

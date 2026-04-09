@@ -52,6 +52,12 @@ export interface ConfigurationResponse {
   business_rules: BusinessRules;
 }
 
+export interface HealthResponse {
+  status: string;
+  models_loaded: string[];
+  feature_count: number;
+}
+
 export interface AuditLogEntry {
   log_id: string;
   timestamp: string;
@@ -81,13 +87,25 @@ export const getAuditLogs = async (): Promise<AuditLogEntry[]> => {
   return response.data;
 };
 
-export const getAllTransactionsAdmin = async (): Promise<TransactionRecord[]> => {
-  const response = await axios.get(`${API_BASE_URL}/admin/transactions`);
+export const getAllTransactionsAdmin = async (requestingUserId: string): Promise<TransactionRecord[]> => {
+  const response = await axios.get(`${API_BASE_URL}/admin/transactions?requesting_user_id=${requestingUserId}`);
   return response.data;
 };
 
-export const getUserTransactions = async (userId: string): Promise<TransactionRecord[]> => {
-  const response = await axios.get(`${API_BASE_URL}/transactions/${userId}`);
+export const getUserOwnTransactions = async (userId: string, requestingUserId: string): Promise<TransactionRecord[]> => {
+  const response = await axios.get(
+    `${API_BASE_URL}/transactions/${userId}?requesting_user_id=${requestingUserId}`,
+  );
+  return response.data;
+};
+
+export const getUserTransactions = async (
+  userId: string,
+  requestingUserId: string,
+): Promise<TransactionRecord[]> => {
+  const response = await axios.get(
+    `${API_BASE_URL}/transactions/${userId}?requesting_user_id=${requestingUserId}`,
+  );
   return response.data;
 };
 
@@ -96,7 +114,12 @@ export const updateTransactionStatus = async (transactionId: string, action: "ap
   return response.data;
 };
 
-export const healthCheck = async () => {
+export const verifyOTP = async (transactionId: string, otp: string): Promise<{ status: string; message: string; transaction_id: string }> => {
+  const response = await axios.post(`${API_BASE_URL}/verify-otp?transaction_id=${transactionId}&user_provided_otp=${otp}`);
+  return response.data;
+};
+
+export const healthCheck = async (): Promise<HealthResponse> => {
   const response = await axios.get(`${API_BASE_URL}/health`);
   return response.data;
 };
