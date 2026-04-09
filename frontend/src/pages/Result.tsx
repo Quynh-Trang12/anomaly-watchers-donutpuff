@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { Layout } from "@/components/layout/Layout";
 import { Button } from "@/components/ui/button";
-import { PredictionOutput } from "@/api";
+import { PredictionOutput, saveTransaction } from "@/api";
 import { 
   ShieldCheck, 
   ShieldAlert, 
@@ -27,7 +27,8 @@ export default function Result() {
   const { userId } = useAuth();
   const [prediction, setPrediction] = useState<PredictionOutput | null>(null);
   const [showOTP, setShowOTP] = useState(false);
-  const [state, setState] = useState<"INITIAL" | "VERIFIED" | "REJECTED">("INITIAL");
+  const [state, setState] = useState<"INITIAL" | "VERIFIED" | "REJECTED" | "CANCELLED">("INITIAL");
+  const originalData = location.state?.originalData;
 
   useEffect(() => {
     const prediction_data = location.state?.prediction as PredictionOutput;
@@ -73,10 +74,57 @@ export default function Result() {
     toast.success("Security report exported successfully.");
   };
 
-  const handleOTPSuccess = () => {
-    setShowOTP(false);
-    setState("VERIFIED");
-    toast.success("Security code verified. Transaction authorized.");
+  const handleOTPSuccess = async (otp: string) => {
+    if (!prediction) return;
+    
+    try {
+      // Complete security verification and transition from INITIATED to APPROVED
+      await saveTransaction({
+        transaction_id: prediction.transaction_id,
+        owner_user_id: originalData?.sender || userId,
+        destination_account_id: originalData?.targetAccount,
+        amount: originalData?.amount || 0,
+        type: originalData?.type || "TRANSFER",
+        status: "APPROVED",
+        probability_score: prediction.probability,
+        timestamp: new Date().toISOString(),
+        risk_factors: prediction.risk_factors,
+        otp_code: otp
+      });
+      
+      setShowOTP(false);
+      setState("VERIFIED");
+      toast.success("Security code verified. Transaction authorized.");
+    } catch (err) {
+      console.error(err);
+      toast.error("Failed to finalize transaction on the server.");
+    }
+  };
+
+  const handleCancel = async () => {
+    if (!prediction) return;
+
+    try {
+      // Transition ephemeral INITIATED state to CANCELLED outcome
+      await saveTransaction({
+        transaction_id: prediction.transaction_id,
+        owner_user_id: originalData?.sender || userId,
+        destination_account_id: originalData?.targetAccount,
+        amount: originalData?.amount || 0,
+        type: originalData?.type || "TRANSFER",
+        status: "CANCELLED",
+        probability_score: prediction.probability,
+        timestamp: new Date().toISOString(),
+        risk_factors: prediction.risk_factors
+      });
+      
+      setShowOTP(false);
+      setState("CANCELLED");
+      toast.info("Transaction cancelled by user.");
+    } catch (err) {
+      console.error(err);
+      toast.error("An error occurred while cancelling.");
+    }
   };
 
   const handleOTPFail = () => {
@@ -87,13 +135,12 @@ export default function Result() {
 
   if (!prediction) return null;
 
-  const originalData = location.state?.originalData;
   const oldbalanceOrig = originalData?.oldbalanceOrig || 0;
   const amount = originalData?.amount || 0;
 
-  const isBlocked = prediction.status === "BLOCKED" || state === "REJECTED";
-  const isApproved = prediction.status === "APPROVED" || state === "VERIFIED";
-  const isPendingReview = prediction.status === "PENDING_ADMIN_REVIEW";
+    const isBlocked = prediction.status === "BLOCKED" || state === "REJECTED";
+    const isApproved = prediction.status === "APPROVED" || state === "VERIFIED";
+    const isCancelled = state === "CANCELLED";
 
   return (
     <Layout>
@@ -118,9 +165,12 @@ export default function Result() {
             <h1 className="text-4xl font-black tracking-tight">
               {isApproved ? "Transaction Secure" : 
                isBlocked ? "Transaction Blocked" : 
+               isCancelled ? "Transaction Cancelled" :
                "Verification Required"}
             </h1>
-            <p className="text-muted-foreground text-lg">{prediction.explanation}</p>
+            <p className="text-muted-foreground text-lg">
+              {isCancelled ? "This transaction request has been terminated at your request." : prediction.explanation}
+            </p>
           </div>
 
           {/* Verification / Review Reference Card */}
@@ -158,19 +208,22 @@ export default function Result() {
                 onSuccess={handleOTPSuccess} 
                 onFail={handleOTPFail} 
               />
+              
+              <div className="mt-8 pt-8 border-t border-dashed text-center">
+                <p className="text-sm text-muted-foreground mb-4 italic">
+                  Changed your mind? You can cancel this transaction attempt below.
+                </p>
+                <Button 
+                  variant="ghost" 
+                  className="text-danger hover:text-danger hover:bg-danger/10 font-bold"
+                  onClick={handleCancel}
+                >
+                  Cancel Transaction
+                </Button>
+              </div>
             </div>
           )}
 
-          {/* Verification / Review Status */}
-          {isPendingReview && (
-            <div className="bg-warning/5 border border-warning/20 rounded-3xl p-8 text-center space-y-4">
-              <AlertTriangle className="h-12 w-12 text-warning mx-auto" />
-              <h3 className="text-xl font-bold">Administrative Review</h3>
-              <p className="text-muted-foreground max-w-md mx-auto">
-                Due to the large transaction volume, this transfer has been queued for manual review by our security team. You will be notified once processed.
-              </p>
-            </div>
-          )}
 
           {/* Risk Factors - Human Readable XAI */}
           {!showOTP && (

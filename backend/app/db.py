@@ -10,10 +10,26 @@ audit_logs: List[AuditLogEntry] = []
 
 # Internal account registry — simulates a real banking ledger
 internal_account_registry: Dict[str, float] = {
-    "user_1": 450000.00,
-    "user_2": 15000.00,
-    "user_3": 250000.00,
-    "user_4": 75000.00,
+    "student_sam": 500.00,
+    "student_lina": 1200.00,
+    "intern_jake": 2200.00,
+    "freelancer_amy": 8500.00,
+    "freelancer_minh": 6200.00,
+    "teacher_anna": 18000.00,
+    "teacher_david": 22000.00,
+    "engineer_khanh": 95000.00,
+    "engineer_lucas": 120000.00,
+    "doctor_emily": 250000.00,
+    "doctor_huy": 300000.00,
+    "smallbiz_oliver": 175000.00,
+    "shop_owner_lan": 68000.00,
+    "manager_sophia": 85000.00,
+    "manager_quang": 92000.00,
+    "retired_john": 40000.00,
+    "retired_ba": 55000.00,
+    "crypto_trader_neo": 500000.00,
+    "influencer_mia": 150000.00,
+    "unemployed_tom": 300.00,
 }
 
 # Email mapping for OTP delivery — maps mock user IDs to real email addresses
@@ -68,10 +84,10 @@ def get_transaction(transaction_id: str) -> Optional[TransactionRecord]:
     return transactions_db.get(transaction_id)
 
 def get_user_transactions(user_id: str) -> List[TransactionRecord]:
-    return [t for t in transactions_db.values() if t.owner_user_id == user_id]
+    return [t for t in transactions_db.values() if (t.owner_user_id == user_id or t.destination_account_id == user_id) and t.status != TransactionStatusEnum.INITIATED]
 
 def get_all_transactions() -> List[TransactionRecord]:
-    return list(transactions_db.values())
+    return [t for t in transactions_db.values() if t.status != TransactionStatusEnum.INITIATED]
 
 def update_transaction_status(transaction_id: str, status: TransactionStatusEnum, admin_id: Optional[str] = None):
     if transaction_id in transactions_db:

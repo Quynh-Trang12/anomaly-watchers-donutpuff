@@ -77,29 +77,9 @@ export default function Admin() {
     }
   };
 
-  const handleTransactionAction = async (id: string, action: "approve" | "block") => {
-    try {
-      await updateTransactionStatus(id, action);
-      toast.success(`Transaction ${action}d`);
-      loadData(); // Refresh logs and transactions
-    } catch (error) {
-      toast.error("Failed to perform action");
-    }
-  };
 
 
 
-  const pendingReview = useMemo(() => 
-    transactions.filter(t => t.status === "PENDING_ADMIN_REVIEW"), 
-  [transactions]);
-
-  useEffect(() => {
-    if (pendingReview.length > 10) {
-      notifyAdminQueueOverflow(pendingReview.length).catch(error => {
-        console.error("Failed to notify admin of queue overflow:", error);
-      });
-    }
-  }, [pendingReview.length]);
 
   if (!isAdmin) {
     return <Navigate to="/" replace />;
@@ -121,17 +101,8 @@ export default function Admin() {
           </div>
         </header>
 
-        <Tabs defaultValue="review" className="space-y-6">
+        <Tabs defaultValue="traffic" className="space-y-6">
           <TabsList className="bg-muted p-1 rounded-xl">
-            <TabsTrigger value="review" className="gap-2 rounded-lg">
-              <ClipboardCheck className="h-4 w-4" />
-              Review Queue
-              {pendingReview.length > 0 && (
-                <span className="bg-primary text-primary-foreground px-2 py-0.5 rounded-full text-xs font-bold">
-                  {pendingReview.length}
-                </span>
-              )}
-            </TabsTrigger>
             <TabsTrigger value="traffic" className="gap-2 rounded-lg">
               <Activity className="h-4 w-4" />
               Global Traffic
@@ -146,60 +117,6 @@ export default function Admin() {
             </TabsTrigger>
           </TabsList>
 
-          {/* Pending Review Queue */}
-          <TabsContent value="review" className="space-y-4">
-            {pendingReview.length === 0 ? (
-              <div className="p-12 text-center border-2 border-dashed rounded-3xl bg-muted/20">
-                <CheckCircle2 className="h-12 w-12 text-success mx-auto mb-4 opacity-20" />
-                <p className="text-muted-foreground font-medium">Clear Queue. No transactions pending review.</p>
-              </div>
-            ) : (
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                {pendingReview.map(t => (
-                  <div key={t.transaction_id} className="bg-card border rounded-2xl p-6 shadow-sm hover:shadow-md transition-shadow">
-                    <div className="flex justify-between items-start mb-4">
-                      <div>
-                        <span className="text-xs font-bold text-muted-foreground tracking-wider uppercase">{t.transaction_id}</span>
-                        <h3 className="text-xl font-bold mt-1">{formatCurrencyToUSD(t.amount)}</h3>
-                      </div>
-                      <div className="bg-warning-muted text-warning px-3 py-1 rounded-full text-xs font-bold">
-                        REVIEW REQ
-                      </div>
-                    </div>
-                    <div className="space-y-3 mb-6">
-                      <div className="flex justify-between text-sm">
-                        <span className="text-muted-foreground">User ID:</span>
-                        <span className="font-mono font-medium">{t.owner_user_id}</span>
-                      </div>
-                      <div className="flex justify-between text-sm">
-                        <span className="text-muted-foreground">Type:</span>
-                        <span className="font-medium">{t.type}</span>
-                      </div>
-                      <div className="flex justify-between text-sm">
-                        <span className="text-muted-foreground">ML Prob:</span>
-                        <span className="font-medium text-danger">{(t.probability_score * 100).toFixed(1)}%</span>
-                      </div>
-                    </div>
-                    <div className="flex gap-3">
-                      <Button 
-                        className="flex-1 bg-success hover:bg-success/90 text-white gap-2"
-                        onClick={() => handleTransactionAction(t.transaction_id, "approve")}
-                      >
-                        <CheckCircle2 className="h-4 w-4" /> Approve
-                      </Button>
-                      <Button 
-                        variant="destructive" 
-                        className="flex-1 gap-2"
-                        onClick={() => handleTransactionAction(t.transaction_id, "block")}
-                      >
-                        <XCircle className="h-4 w-4" /> Block
-                      </Button>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </TabsContent>
 
           {/* Global Traffic */}
           <TabsContent value="traffic">
@@ -235,9 +152,10 @@ export default function Admin() {
                           <span className={`px-2 py-1 rounded-full text-[10px] font-bold uppercase ${
                             t.status === 'APPROVED' ? 'bg-success-muted text-success' :
                             t.status === 'BLOCKED' ? 'bg-danger-muted text-danger' :
+                            t.status === 'CANCELLED' ? 'bg-muted text-muted-foreground' :
                             'bg-warning-muted text-warning'
                           }`}>
-                            {t.status.replace(/_/g, ' ')}
+                            {t.status === 'CANCELLED' ? 'Cancelled by user' : t.status.replace(/_/g, ' ')}
                           </span>
                         </td>
                         <td className="px-6 py-4">
@@ -285,7 +203,7 @@ export default function Admin() {
                         onChange={e => setConfig({...config, large_transfer_limit_amount: parseFloat(e.target.value)})}
                       />
                       <p className="text-xs text-muted-foreground italic">
-                        Transactions above this amount will be held for manual security review.
+                        Transactions above this amount will no longer be held but will be processed according to real-time AI analysis.
                       </p>
                     </div>
 

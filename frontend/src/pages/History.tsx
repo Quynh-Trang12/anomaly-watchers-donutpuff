@@ -1,7 +1,7 @@
 import { useEffect, useState, useCallback } from "react";
 import { Layout } from "@/components/layout/Layout";
 import { getUserTransactions, TransactionRecord } from "@/api";
-import { useAuth } from "@/context/AuthContext";
+import { useAuth, MOCK_USERS } from "@/context/AuthContext";
 import { 
   History as HistoryIcon, 
   Search, 
@@ -12,7 +12,8 @@ import {
   ShieldCheck,
   ShieldAlert,
   Clock,
-  AlertTriangle
+  AlertTriangle,
+  User
 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -29,21 +30,21 @@ import {
 export default function History() {
   const { userId } = useAuth();
   const [transactions, setTransactions] = useState<TransactionRecord[]>([]);
-  const [searchTerm, setSearchTerm] = useState("");
+  const [selectedAccountId, setSelectedAccountId] = useState<string>(userId);
   const [statusFilter, setStatusFilter] = useState<string>("ALL");
   const [isLoading, setIsLoading] = useState(true);
 
   const loadTransactions = useCallback(async () => {
     setIsLoading(true);
     try {
-      const data = await getUserTransactions(userId, userId);
+      const data = await getUserTransactions(selectedAccountId, selectedAccountId);
       setTransactions(data);
     } catch (err) {
       console.error(err);
     } finally {
       setIsLoading(false);
     }
-  }, [userId]);
+  }, [selectedAccountId, userId]);
 
   useEffect(() => {
     loadTransactions();
@@ -51,23 +52,13 @@ export default function History() {
 
   const filteredTransactions = useMemo(() => {
     return transactions.filter((transaction) => {
-      // 1. Filter by Status
+      // Filter by Status
       if (statusFilter !== "ALL" && transaction.status !== statusFilter) {
         return false;
       }
-      
-      // 2. Filter by Search Term
-      const search_term_lower = searchTerm.toLowerCase().trim();
-      if (!search_term_lower) return true;
-      
-      return [
-        transaction.transaction_id,
-        transaction.type,
-        transaction.status.replace(/_/g, " "),
-        transaction.amount.toFixed(2),
-      ].some((field) => field.toLowerCase().includes(search_term_lower));
+      return true;
     });
-  }, [transactions, searchTerm, statusFilter]);
+  }, [transactions, statusFilter]);
 
   return (
     <Layout>
@@ -82,15 +73,19 @@ export default function History() {
           </div>
           
           <div className="flex flex-col sm:flex-row gap-3">
-            <div className="relative w-full sm:w-64">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-              <Input 
-                placeholder="Search history..." 
-                className="pl-10 rounded-xl"
-                value={searchTerm}
-                onChange={e => setSearchTerm(e.target.value)}
-              />
-            </div>
+            <Select value={selectedAccountId} onValueChange={setSelectedAccountId}>
+              <SelectTrigger className="w-full sm:w-64 rounded-xl h-10">
+                <User className="h-4 w-4 mr-2 text-muted-foreground" />
+                <SelectValue placeholder="Choose account..." />
+              </SelectTrigger>
+              <SelectContent>
+                {MOCK_USERS.map((user) => (
+                  <SelectItem key={user.id} value={user.id}>
+                    {user.name} ({user.id})
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
             <Select value={statusFilter} onValueChange={setStatusFilter}>
               <SelectTrigger className="w-full sm:w-[180px] rounded-xl h-10">
                 <Filter className="h-4 w-4 mr-2" />
@@ -100,8 +95,7 @@ export default function History() {
                 <SelectItem value="ALL">All Statuses</SelectItem>
                 <SelectItem value="APPROVED">Approved</SelectItem>
                 <SelectItem value="BLOCKED">Blocked</SelectItem>
-                <SelectItem value="PENDING_ADMIN_REVIEW">Pending Review</SelectItem>
-                <SelectItem value="PENDING_USER_OTP">Pending Verification</SelectItem>
+                <SelectItem value="CANCELLED">Cancelled</SelectItem>
               </SelectContent>
             </Select>
           </div>
@@ -121,13 +115,16 @@ export default function History() {
           </div>
         ) : (
           <div className="grid grid-cols-1 gap-4">
-            {filteredTransactions.slice().reverse().map(t => (
+            {filteredTransactions.slice().reverse().map(t => {
+              const isIncoming = t.destination_account_id === selectedAccountId || t.type === 'CASH_IN';
+              
+              return (
               <div key={t.transaction_id} className="bg-card border rounded-2xl p-6 flex flex-col md:flex-row items-center justify-between gap-6 hover:shadow-md transition-shadow">
                 <div className="flex items-center gap-4 w-full md:w-auto">
                   <div className={`p-3 rounded-xl ${
-                    t.type === 'TRANSFER' || t.type === 'CASH OUT' ? 'bg-danger/10 text-danger' : 'bg-success/10 text-success'
+                    isIncoming ? 'bg-success/10 text-success' : 'bg-danger/10 text-danger'
                   }`}>
-                    {t.type === 'TRANSFER' || t.type === 'CASH OUT' ? <ArrowUpRight className="h-6 w-6" /> : <ArrowDownLeft className="h-6 w-6" />}
+                    {isIncoming ? <ArrowDownLeft className="h-6 w-6" /> : <ArrowUpRight className="h-6 w-6" />}
                   </div>
                   <div>
                     <h4 className="font-bold text-lg">{t.type.replace(/_/g, ' ')}</h4>
@@ -140,22 +137,24 @@ export default function History() {
                   <span className={`px-3 py-1 rounded-full text-xs font-bold uppercase ${
                     t.status === 'APPROVED' ? 'bg-success-muted text-success' :
                     t.status === 'BLOCKED' ? 'bg-danger-muted text-danger' :
+                    t.status === 'CANCELLED' ? 'bg-muted text-muted-foreground' :
                     'bg-warning-muted text-warning'
                   }`}>
-                    {t.status.replace(/_/g, ' ')}
+                    {t.status === 'CANCELLED' ? 'Cancelled by user' : t.status.replace(/_/g, ' ')}
                   </span>
                 </div>
 
                 <div className="text-right w-full md:w-auto">
                   <h3 className={`text-xl font-black ${
-                    t.type === 'TRANSFER' || t.type === 'CASH OUT' ? 'text-foreground' : 'text-success'
+                    isIncoming ? 'text-success' : 'text-foreground'
                   }`}>
-                    {t.type === 'TRANSFER' || t.type === 'CASH OUT' ? '-' : '+'}{formatCurrencyToUSD(t.amount)}
+                    {isIncoming ? '+' : '-'}{formatCurrencyToUSD(t.amount)}
                   </h3>
                   <p className="text-xs text-muted-foreground">{new Date(t.timestamp).toLocaleString()}</p>
                 </div>
               </div>
-            ))}
+              );
+            })}
           </div>
         )}
       </div>

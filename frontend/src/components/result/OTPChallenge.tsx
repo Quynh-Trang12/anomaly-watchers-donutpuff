@@ -8,7 +8,7 @@ import { toast } from "sonner";
 
 interface OTPChallengeProps {
   transactionId: string;
-  onSuccess: () => void;
+  onSuccess: (otp: string) => void;
   onFail: () => void;
 }
 
@@ -74,7 +74,7 @@ export function OTPChallenge({ transactionId, onSuccess, onFail }: OTPChallengeP
       setStatus("success");
       if (timerRef.current) clearInterval(timerRef.current);
       toast.success("OTP verification successful! Transaction approved.");
-      setTimeout(() => onSuccess(), 2000);
+      setTimeout(() => onSuccess(otp), 2000);
     } catch (error: any) {
       const errorMsg = error.response?.data?.detail || "Invalid security code. Please try again.";
       setErrorMessage(errorMsg);

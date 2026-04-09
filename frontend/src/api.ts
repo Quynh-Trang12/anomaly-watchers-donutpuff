@@ -2,7 +2,7 @@ import axios from "axios";
 
 const API_BASE_URL = "http://localhost:8000/api";
 
-export type TransactionStatus = "APPROVED" | "BLOCKED" | "PENDING_USER_OTP" | "PENDING_ADMIN_REVIEW";
+export type TransactionStatus = "APPROVED" | "BLOCKED" | "PENDING_USER_OTP" | "CANCELLED";
 
 export interface RiskFactor {
   factor: string;
@@ -33,6 +33,7 @@ export interface PredictionOutput {
 export interface TransactionRecord {
   transaction_id: string;
   owner_user_id: string;
+  destination_account_id?: string;
   amount: number;
   type: string;
   status: TransactionStatus;
@@ -111,6 +112,11 @@ export const getUserTransactions = async (
 
 export const updateTransactionStatus = async (transactionId: string, action: "approve" | "block", adminId: string = "admin_1"): Promise<{ status: string; transaction_id: string; new_status: string }> => {
   const response = await axios.post(`${API_BASE_URL}/transactions/${transactionId}/action?action=${action}&admin_id=${adminId}`);
+  return response.data;
+};
+
+export const saveTransaction = async (data: TransactionRecord): Promise<{ status: string; transaction_id: string }> => {
+  const response = await axios.post(`${API_BASE_URL}/transactions`, data);
   return response.data;
 };
 

@@ -22,8 +22,9 @@ class TransactionTypeEnum(str, Enum):
 class TransactionStatusEnum(str, Enum):
     APPROVED = "APPROVED"
     BLOCKED = "BLOCKED"
+    CANCELLED = "CANCELLED"
     PENDING_USER_OTP = "PENDING_USER_OTP"
-    PENDING_ADMIN_REVIEW = "PENDING_ADMIN_REVIEW"
+    INITIATED = "INITIATED"
 
 
 class TransactionInput(BaseModel):
