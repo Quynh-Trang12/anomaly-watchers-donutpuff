@@ -14,8 +14,8 @@ from pydantic import BaseModel, ConfigDict, Field
 class TransactionTypeEnum(str, Enum):
     PAYMENT = "PAYMENT"
     TRANSFER = "TRANSFER"
-    CASH_OUT = "CASH OUT"
-    CASH_IN = "CASH IN"
+    CASH_OUT = "CASH_OUT"
+    CASH_IN = "CASH_IN"
     DEBIT = "DEBIT"
 
 
@@ -38,6 +38,7 @@ class TransactionInput(BaseModel):
     newbalanceDest: float = Field(default=0, ge=0)
     user_id: str = Field(default="user_123")
     destination_account_id: str = Field(default="")
+    step: Optional[int] = Field(default=None, ge=1)
 
 
 class RiskFactor(BaseModel):
