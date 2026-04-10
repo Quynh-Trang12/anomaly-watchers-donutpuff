@@ -456,12 +456,14 @@ async def predict_primary(payload: TransactionInput, background_tasks: Backgroun
     config = app.state.system_configuration
     ml_thresholds = config.get("ml_thresholds", {})
     block_threshold = ml_thresholds.get("block_threshold", 0.5130)
+    step_up_threshold = ml_thresholds.get("step_up_threshold", 0.1000)
     business_rules = config.get("business_rules", {})
     restricted_flagged_status = business_rules.get("restricted_flagged_status", True)
 
     status = TransactionStatusEnum.APPROVED
     explanation = "Everything looks good! Your payment has been securely processed."
     otp_code = None
+    recipient_email = None
 
     if inference_degraded:
         status = TransactionStatusEnum.BLOCKED
@@ -470,7 +472,14 @@ async def predict_primary(payload: TransactionInput, background_tasks: Backgroun
     elif probability_score >= block_threshold:
         status = TransactionStatusEnum.BLOCKED
         explanation = "For your protection, this transaction has been declined. Our security analysis detected unusual patterns."
-    elif (restricted_flagged_status and payload.type in {"TRANSFER", "CASH OUT"} and payload.oldbalanceDest == 0):
+    elif step_up_threshold <= probability_score < block_threshold:
+        status = TransactionStatusEnum.PENDING_USER_OTP
+        explanation = "This payment looks a little different from your usual activity. We just need to confirm it's really you."
+        recipient_email = get_user_email(payload.user_id) or f"{payload.user_id}@example.com"
+    elif (restricted_flagged_status and payload.type in {"TRANSFER", "CASH OUT"}
+          and payload.oldbalanceDest == 0
+          and (not payload.destination_account_id or get_account_balance(payload.destination_account_id) is None)):
+        # Only trigger when the destination is genuinely unregistered, not merely zero-balance
         status = TransactionStatusEnum.PENDING_USER_OTP
         explanation = "This payment looks a little different from your usual activity. We just need to confirm it's really you."
         recipient_email = get_user_email(payload.user_id) or f"{payload.user_id}@example.com"

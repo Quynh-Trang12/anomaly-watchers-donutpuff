@@ -24,7 +24,7 @@ interface OTPChallengeProps {
   onFail: () => void;
 }
 
-const TIMER_SECONDS = 10; // 5 minutes for OTP verification
+const TIMER_SECONDS = 20; // 5 minutes for OTP verification
 
 export function OTPChallenge({
   transactionId,

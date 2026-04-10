@@ -95,13 +95,22 @@ export function TransactionForm({ onTransactionApproved, refreshTrigger }: Trans
 
     setIsSubmitting(true);
     try {
+      // Fetch the destination account's real balance for accurate ML inference
+      let destOldBalance = 0;
+      try {
+        const destData = await getUserBalance(targetAccount);
+        destOldBalance = destData.balance;
+      } catch {
+        // Destination not found — destOldBalance stays 0 (genuinely unknown recipient)
+      }
+
       const payload: TransactionInput = {
         type,
         amount: parsedAmount,
         oldbalanceOrg: currentBalance,
         newbalanceOrig: currentBalance - parsedAmount,
-        oldbalanceDest: 0,
-        newbalanceDest: parsedAmount,
+        oldbalanceDest: destOldBalance,
+        newbalanceDest: destOldBalance + parsedAmount,
         user_id: senderAccount,
         destination_account_id: targetAccount,
         step: step,

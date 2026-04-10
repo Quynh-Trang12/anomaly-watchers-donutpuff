@@ -75,17 +75,31 @@ def main():
     # while ensuring that when we ask users for extra verification, we are right
     # at least 90% of the time (precision ≥ 90%). This minimizes user friction
     # while maintaining security coverage for the majority of genuine fraud.
+    #
+    # NOTE: sklearn's precision_recall_curve does NOT guarantee a monotonically
+    # increasing precision array, so we cannot simply take the first qualifying
+    # index. Instead we explicitly select the qualifying index with the highest
+    # recall, which is the mathematically correct maximization.
     indices_meeting_precision_target = np.where(precision >= 0.90)[0]
     if len(indices_meeting_precision_target) > 0:
-        earliest_qualifying_index = indices_meeting_precision_target[0]
-        step_up_threshold = float(thresholds[min(earliest_qualifying_index, len(thresholds) - 1)])
+        # Among all operating points with precision ≥ 90%, pick the one
+        # that achieves the highest recall (i.e., catches the most fraud).
+        best_recall_among_qualified = np.argmax(recall[indices_meeting_precision_target])
+        best_index = indices_meeting_precision_target[best_recall_among_qualified]
+        step_up_threshold = float(thresholds[min(best_index, len(thresholds) - 1)])
     else:
         # Fallback: use half the block threshold if 90% precision is never achieved
         step_up_threshold = float(block_threshold * 0.5)
         print(f"Warning: 90% precision target not achievable. Using fallback: {step_up_threshold:.4f}")
 
-    # Architectural constraint: step_up must always be strictly less than block
-    step_up_threshold = min(step_up_threshold, block_threshold * 0.99)
+    # Architectural constraint: step_up must be strictly less than block
+    # Ensure at least 5% separation to create a meaningful medium-risk zone
+    # If calculated step_up is too close, set it to 75% of block threshold
+    min_separation = block_threshold * 0.05
+    if (block_threshold - step_up_threshold) < min_separation:
+        step_up_threshold = block_threshold - min_separation
+        print(f"Info: Adjusted step_up_threshold to ensure 5% separation from block_threshold")
+
     
     print(f"Optimal Thresholds Derived — Block: {block_threshold:.4f}, Step-Up: {step_up_threshold:.4f}")
     
