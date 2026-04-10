@@ -21,6 +21,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from .db import (
     add_audit_log,
+    clear_cancellation_streak,
     credit_account_balance,
     deduct_account_balance,
     freeze_account,
@@ -28,12 +29,14 @@ from .db import (
     get_account_balance,
     get_all_transactions,
     get_audit_logs,
+    get_consecutive_cancellation_count,
     get_frozen_accounts,
     get_transaction,
     get_user_display_name,
     get_user_email,
     get_user_transactions,
     is_account_frozen,
+    record_cancelled_medium_risk_transaction,
     record_failed_otp,
     save_transaction,
     unfreeze_account,
@@ -372,13 +375,22 @@ async def unfreeze_user_account(user_id: str, admin_id: str = "admin_1"):
 async def get_freeze_configuration_api():
     return FreezeConfig(
         max_failed_otp_attempts=freeze_config["max_failed_otp_attempts"],
+        max_consecutive_cancellations=freeze_config.get("max_consecutive_cancellations", 3),
         observation_window_minutes=freeze_config["observation_window_minutes"]
     )
 
 @app.put("/api/admin/freeze-config")
 async def update_freeze_configuration_api(config: FreezeConfig, admin_id: str = "admin_1"):
-    update_freeze_config(config.max_failed_otp_attempts, config.observation_window_minutes)
-    add_audit_log(admin_id=admin_id, action_type="FREEZE_CONFIG_UPDATE", details="Updated freeze config")
+    update_freeze_config(
+        max_failed_otp_attempts=config.max_failed_otp_attempts,
+        max_consecutive_cancellations=config.max_consecutive_cancellations,
+        observation_window_minutes=config.observation_window_minutes
+    )
+    add_audit_log(
+        admin_id=admin_id,
+        action_type="FREEZE_CONFIG_UPDATE",
+        details=f"Updated freeze config: max_otp={config.max_failed_otp_attempts}, max_cancellations={config.max_consecutive_cancellations}, window={config.observation_window_minutes}min"
+    )
     return {"status": "success"}
 
 @app.get("/api/transactions/status/{id}")
@@ -542,6 +554,10 @@ async def verify_otp_endpoint(transaction_id: str, user_provided_otp: str):
 
     # Success
     update_transaction_status(transaction_id, TransactionStatusEnum.APPROVED)
+    
+    # Clear the consecutive cancellation streak since OTP was successfully completed
+    clear_cancellation_streak(transaction.owner_user_id)
+    
     deduct_account_balance(transaction.owner_user_id, transaction.amount)
     if transaction.destination_account_id:
         credit_account_balance(transaction.destination_account_id, transaction.amount)
@@ -559,6 +575,34 @@ async def cancel_otp_endpoint(transaction_id: str):
 
     update_transaction_status(transaction_id, TransactionStatusEnum.CANCELLED)
     add_audit_log(admin_id="system", action_type="USER_CANCELLATION", details=f"User cancelled transaction {transaction_id}")
+
+    # ─── Track consecutive cancelled medium-risk transactions ────────────────
+    # A PENDING_USER_OTP transaction is a medium-risk transaction that requires OTP
+    # If a user cancels 3 such transactions in a row within the observation window, freeze the account
+    cancellation_count = record_cancelled_medium_risk_transaction(transaction.owner_user_id)
+    logger.info(
+        "Recorded cancellation for %s. Consecutive medium-risk cancellations: %d/%d",
+        transaction.owner_user_id,
+        cancellation_count,
+        freeze_config.get("max_consecutive_cancellations", 3)
+    )
+
+    if cancellation_count >= freeze_config.get("max_consecutive_cancellations", 3):
+        freeze_account(
+            transaction.owner_user_id,
+            f"Exceeded maximum consecutive cancelled medium-risk transactions ({cancellation_count})"
+        )
+        add_audit_log(
+            admin_id="system",
+            action_type="ACCOUNT_FREEZE",
+            details=f"Account {transaction.owner_user_id} suspended. Reason: {cancellation_count} consecutive cancelled medium-risk transactions."
+        )
+        logger.warning(
+            "ACCOUNT FROZEN: %s cancelled %d medium-risk transactions consecutively",
+            transaction.owner_user_id,
+            cancellation_count
+        )
+
     return {"status": "success", "message": "Transaction successfully cancelled."}
 
 @app.get("/api/security/freeze")

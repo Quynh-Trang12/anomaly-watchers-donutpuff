@@ -79,8 +79,9 @@ export interface FrozenAccountEntry {
 }
 
 export interface FreezeConfig {
-  max_failed_otp_attempts:    number;
-  observation_window_minutes: number;
+  max_failed_otp_attempts:      number;
+  max_consecutive_cancellations: number;
+  observation_window_minutes:    number;
 }
 
 // ─── API Functions ────────────────────────────────────────────────────────────

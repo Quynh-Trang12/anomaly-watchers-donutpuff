@@ -84,10 +84,14 @@ frozen_accounts: Dict[str, Dict[str, object]] = {}
 # Maps user_id → list of datetime timestamps for failed OTP attempts
 failed_otp_attempts: Dict[str, List[datetime]] = {}
 
+# Maps user_id → list of datetime timestamps for consecutive cancelled medium-risk transactions
+consecutive_cancelled_transactions: Dict[str, List[datetime]] = {}
+
 # Mutable freeze config (admin-configurable at runtime)
 freeze_config: Dict[str, int] = {
-    "max_failed_otp_attempts":    3,
-    "observation_window_minutes": 10,
+    "max_failed_otp_attempts":      3,
+    "max_consecutive_cancellations": 3,
+    "observation_window_minutes":   10,
 }
 
 # ─── Account Balance Helpers ─────────────────────────────────────────────────
@@ -214,6 +218,53 @@ def get_failed_otp_count(user_id: str) -> int:
     window = timedelta(minutes=freeze_config["observation_window_minutes"])
     return sum(1 for t in failed_otp_attempts.get(user_id, []) if (now - t) < window)
 
-def update_freeze_config(max_failed_otp_attempts: int, observation_window_minutes: int) -> None:
-    freeze_config["max_failed_otp_attempts"]    = max_failed_otp_attempts
-    freeze_config["observation_window_minutes"] = observation_window_minutes
+def update_freeze_config(
+    max_failed_otp_attempts: int,
+    max_consecutive_cancellations: int,
+    observation_window_minutes: int,
+) -> None:
+    """Update all freeze configuration thresholds."""
+    freeze_config["max_failed_otp_attempts"]      = max_failed_otp_attempts
+    freeze_config["max_consecutive_cancellations"] = max_consecutive_cancellations
+    freeze_config["observation_window_minutes"]   = observation_window_minutes
+
+
+# ─── Cancelled Medium-Risk Transaction Tracking ──────────────────────────────
+
+def record_cancelled_medium_risk_transaction(user_id: str) -> int:
+    """
+    Record a cancelled medium-risk transaction for the user.
+    Returns the count of consecutive cancellations within the observation window.
+    """
+    now = datetime.now()
+    window = timedelta(minutes=freeze_config["observation_window_minutes"])
+
+    # Ensure user has a list
+    if user_id not in consecutive_cancelled_transactions:
+        consecutive_cancelled_transactions[user_id] = []
+
+    attempts = consecutive_cancelled_transactions[user_id]
+
+    # Prune stale cancellations (outside window)
+    current_valid = [t for t in attempts if (now - t) < window]
+
+    # Record new cancellation
+    current_valid.append(now)
+    consecutive_cancelled_transactions[user_id] = current_valid
+
+    return len(current_valid)
+
+
+def get_consecutive_cancellation_count(user_id: str) -> int:
+    """Get the count of consecutive cancelled medium-risk transactions within the observation window."""
+    now = datetime.now()
+    window = timedelta(minutes=freeze_config["observation_window_minutes"])
+    return sum(
+        1 for t in consecutive_cancelled_transactions.get(user_id, [])
+        if (now - t) < window
+    )
+
+
+def clear_cancellation_streak(user_id: str) -> None:
+    """Clear the consecutive cancellation streak for a user (called after a non-cancelled transaction)."""
+    consecutive_cancelled_transactions[user_id] = []

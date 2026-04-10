@@ -55,6 +55,7 @@ export default function Admin() {
   const [frozenAccounts, setFrozenAccounts] = useState<FrozenAccountEntry[]>([]);
   const [freezeCfg, setFreezeCfg] = useState<FreezeConfig>({
     max_failed_otp_attempts: 3,
+    max_consecutive_cancellations: 3,
     observation_window_minutes: 10,
   });
 
@@ -237,7 +238,25 @@ export default function Admin() {
                       className="h-14 rounded-2xl font-black bg-muted/30 text-xl"
                       onChange={(e) => setFreezeCfg({ ...freezeCfg, max_failed_otp_attempts: parseInt(e.target.value) || 1 })}
                     />
+                    <p className="text-[10px] text-muted-foreground font-medium">Number of failed OTP attempts before automatic account freeze.</p>
                   </div>
+
+                  <div className="space-y-3">
+                    <Label className="text-xs font-black uppercase tracking-widest text-muted-foreground flex justify-between">
+                      Cancelled Medium-Risk Limit
+                      <span className="text-primary font-mono">{freezeCfg.max_consecutive_cancellations} CANCELLATIONS</span>
+                    </Label>
+                    <Input
+                      type="number"
+                      min={1}
+                      max={20}
+                      value={freezeCfg.max_consecutive_cancellations}
+                      className="h-14 rounded-2xl font-black bg-muted/30 text-xl"
+                      onChange={(e) => setFreezeCfg({ ...freezeCfg, max_consecutive_cancellations: parseInt(e.target.value) || 1 })}
+                    />
+                    <p className="text-[10px] text-muted-foreground font-medium">Number of consecutive cancelled medium-risk transactions before automatic account freeze.</p>
+                  </div>
+
                   <div className="space-y-3">
                     <Label className="text-xs font-black uppercase tracking-widest text-muted-foreground flex justify-between">
                       Violation Window (Min)
@@ -251,7 +270,9 @@ export default function Admin() {
                       className="h-14 rounded-2xl font-black bg-muted/30 text-xl"
                       onChange={(e) => setFreezeCfg({ ...freezeCfg, observation_window_minutes: parseInt(e.target.value) || 1 })}
                     />
+                    <p className="text-[10px] text-muted-foreground font-medium">Time window for counting security violations (applies to both OTP and cancellations).</p>
                   </div>
+
                   <Button onClick={handleSaveFreezeCfg} className="w-full h-16 rounded-2xl text-lg font-black gap-3 shadow-xl transition-all hover:scale-[1.01] active:scale-[0.98]">
                     <Save className="h-5 w-5" /> SYNC THRESHOLDS
                   </Button>

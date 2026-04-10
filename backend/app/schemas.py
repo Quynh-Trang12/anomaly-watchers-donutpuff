@@ -104,8 +104,9 @@ class QueueOverflowNotify(BaseModel):
 
 
 class FreezeConfig(BaseModel):
-    max_failed_otp_attempts:    int = Field(..., ge=1, le=20)
-    observation_window_minutes: int = Field(..., ge=1, le=60)
+    max_failed_otp_attempts:      int = Field(..., ge=1, le=20)
+    max_consecutive_cancellations: int = Field(..., ge=1, le=20)
+    observation_window_minutes:    int = Field(..., ge=1, le=60)
 
 
 class FrozenAccountEntry(BaseModel):
