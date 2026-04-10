@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timedelta
 import uuid
 from typing import List, Dict, Optional
 from .schemas import TransactionRecord, TransactionStatusEnum, AuditLogEntry
@@ -14,16 +14,65 @@ internal_account_registry: Dict[str, float] = {
     "user_2": 15000.00,
     "user_3": 250000.00,
     "user_4": 75000.00,
+    "user_5": 32000.00,
+    "user_6": 180000.00,
+    "user_7": 9500.00,
+    "user_8": 62000.00,
+    "user_9": 120000.00,
+    "user_10": 5000.00,
+    "user_11": 88000.00,
+    "user_12": 43000.00,
+    "user_13": 215000.00,
+    "user_14": 7200.00,
+    "user_15": 310000.00,
+    "user_16": 55000.00,
+    "user_17": 19000.00,
+    "user_18": 140000.00,
+    "user_19": 3800.00,
+    "user_20": 97000.00,
 }
 
 # Email mapping for OTP delivery — maps mock user IDs to real email addresses
 # Configure these email addresses for OTP testing with real email providers
 user_email_registry: Dict[str, str] = {
-    "user_1": "user_1@example.com",           # Change to your email for testing
-    "user_2": "user_2@example.com",           # Change to your email for testing
-    "user_3": "user_3@example.com",           # Change to your email for testing
-    "user_4": "quynhtranglengoc@gmail.com",   # YOUR ACTUAL GMAIL ADDRESS
+    "user_1": "alice.chen@example.com",
+    "user_2": "bob.martinez@example.com",
+    "user_3": "carol.johnson@example.com",
+    "user_4": "david.kim@example.com",
+    "user_5": "emma.williams@example.com",
+    "user_6": "frank.nguyen@example.com",
+    "user_7": "grace.patel@example.com",
+    "user_8": "henry.okafor@example.com",
+    "user_9": "isabella.santos@example.com",
+    "user_10": "james.liu@example.com",
+    "user_11": "karen.muller@example.com",
+    "user_12": "liam.adeyemi@example.com",
+    "user_13": "mia.tanaka@example.com",
+    "user_14": "noah.fernandez@example.com",
+    "user_15": "olivia.hassan@example.com",
+    "user_16": "paul.osei@example.com",
+    "user_17": "quinn.ramirez@example.com",
+    "user_18": "rachel.dubois@example.com",
+    "user_19": "samuel.park@example.com",
+    "user_20": "tina.kovac@example.com",
 }
+
+# ─── Account Freeze Management ───────────────────────────────────────────────
+
+# Tracks temporarily frozen user accounts with freeze timestamp
+frozen_accounts: Dict[str, Dict[str, any]] = {}
+
+# Maximum failed step-up attempts before auto-freeze is considered
+FREEZE_CONFIG_DEFAULTS = {
+    "max_failed_otp_attempts": 3,
+    "observation_window_minutes": 10,
+}
+
+# Current freeze configuration (can be updated by admin)
+freeze_config: Dict[str, int] = dict(FREEZE_CONFIG_DEFAULTS)
+
+# Tracks failed OTP attempts per user (user_id -> [(timestamp, count)])
+failed_otp_attempts: Dict[str, List[datetime]] = {}
 
 def get_account_balance(user_id: str) -> Optional[float]:
     """Returns the current balance for a registered internal account, or None if not found."""
@@ -97,3 +146,82 @@ def add_audit_log(admin_id: str, action_type: str, details: str):
 
 def get_audit_logs() -> List[AuditLogEntry]:
     return audit_logs
+
+
+# ─── Account Freeze Functions ────────────────────────────────────────────────
+
+def freeze_account(user_id: str, reason: str) -> None:
+    """Freezes an account, preventing future transactions."""
+    frozen_accounts[user_id] = {
+        "frozen_at": datetime.now(),
+        "reason": reason,
+    }
+
+
+def unfreeze_account(user_id: str) -> None:
+    """Unfreezes a previously frozen account."""
+    if user_id in frozen_accounts:
+        del frozen_accounts[user_id]
+
+
+def is_account_frozen(user_id: str) -> bool:
+    """Returns True if the account is currently frozen."""
+    return user_id in frozen_accounts
+
+
+def record_failed_otp(user_id: str) -> int:
+    """
+    Records a failed OTP attempt and returns total failures in the observation window.
+    Prunes old attempts outside the observation window.
+    """
+    now = datetime.now()
+    observation_window = timedelta(minutes=freeze_config["observation_window_minutes"])
+    
+    if user_id not in failed_otp_attempts:
+        failed_otp_attempts[user_id] = []
+    
+    # Remove attempts outside the observation window
+    failed_otp_attempts[user_id] = [
+        attempt_time for attempt_time in failed_otp_attempts[user_id]
+        if (now - attempt_time) < observation_window
+    ]
+    
+    # Record the new failure
+    failed_otp_attempts[user_id].append(now)
+    
+    return len(failed_otp_attempts[user_id])
+
+
+def get_failed_otp_count(user_id: str) -> int:
+    """Returns the current failed OTP count within the observation window."""
+    now = datetime.now()
+    observation_window = timedelta(minutes=freeze_config["observation_window_minutes"])
+    
+    if user_id not in failed_otp_attempts:
+        return 0
+    
+    # Prune old attempts outside the observation window
+    failed_otp_attempts[user_id] = [
+        attempt_time for attempt_time in failed_otp_attempts[user_id]
+        if (now - attempt_time) < observation_window
+    ]
+    
+    return len(failed_otp_attempts[user_id])
+
+
+def get_frozen_accounts() -> List[Dict[str, any]]:
+    """Returns list of all currently frozen accounts."""
+    return [
+        {
+            "user_id": user_id,
+            "frozen_at": details["frozen_at"],
+            "reason": details["reason"],
+        }
+        for user_id, details in frozen_accounts.items()
+    ]
+
+
+def update_freeze_config(max_failed_otp_attempts: int, observation_window_minutes: int) -> None:
+    """Updates the freeze configuration."""
+    freeze_config["max_failed_otp_attempts"] = max_failed_otp_attempts
+    freeze_config["observation_window_minutes"] = observation_window_minutes

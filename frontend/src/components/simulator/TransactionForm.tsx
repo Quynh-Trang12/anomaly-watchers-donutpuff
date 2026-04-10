@@ -12,12 +12,12 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Send, Wallet, ArrowRightLeft, Landmark, CreditCard } from "lucide-react";
+import { Send, Wallet, ArrowRightLeft, Clock } from "lucide-react";
 import { toast } from "sonner";
 import { formatCurrencyToUSD } from "@/lib/utils";
 import { useEffect } from "react";
 import { getUserBalance, predictPrimary, TransactionInput } from "@/api";
-import { useAuth } from "@/context/AuthContext";
+import { useAuth, MOCK_USERS } from "@/context/AuthContext";
 
 interface TransactionFormProps {
   onTransactionApproved?: () => void;
@@ -26,26 +26,34 @@ interface TransactionFormProps {
 
 export function TransactionForm({ onTransactionApproved, refreshTrigger }: TransactionFormProps) {
   const navigate = useNavigate();
-  const { userId } = useAuth();
+  const { userId, setUserId, setHasActivelySelectedUser } = useAuth();
   
   const [type, setType] = useState<string>("TRANSFER");
   const [amountRawValue, setAmountRawValue] = useState<string>("");
   const [amountDisplayValue, setAmountDisplayValue] = useState<string>("");
   const [targetAccount, setTargetAccount] = useState("");
+  const [senderAccount, setSenderAccount] = useState(userId);
   const [currentBalance, setCurrentBalance] = useState<number>(450000.00);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [step, setStep] = useState<number>(0);
 
+  // ─── Sync sender with auth context when user switches ─────────────────────
+  useEffect(() => {
+    setSenderAccount(userId);
+  }, [userId]);
+
+  // ─── Fetch balance for the selected sender account ────────────────────────
   useEffect(() => {
     const fetchBalance = async () => {
       try {
-        const balanceData = await getUserBalance(userId || "user_1");
+        const balanceData = await getUserBalance(senderAccount || "user_1");
         setCurrentBalance(balanceData.balance);
       } catch (error) {
         console.error("Failed to fetch balance:", error);
       }
     };
     fetchBalance();
-  }, [userId, refreshTrigger]);
+  }, [senderAccount, refreshTrigger]);
 
   const handleAmountInputChange = (event: React.ChangeEvent<HTMLInputElement>) => {
     // Strip everything except digits and one decimal point
@@ -70,6 +78,13 @@ export function TransactionForm({ onTransactionApproved, refreshTrigger }: Trans
     setAmountDisplayValue(formatted_integer + decimal_suffix);
   };
 
+  // ─── Hour of Day Badge Formatting ─────────────────────────────────────────
+  const stepDay = Math.floor(step / 24) + 1;
+  const stepHourOfDay = step % 24;
+  const stepAmPm = stepHourOfDay >= 12 ? "PM" : "AM";
+  const stepHour12 = stepHourOfDay === 0 ? 12 : stepHourOfDay > 12 ? stepHourOfDay - 12 : stepHourOfDay;
+  const stepBadgeText = `Time Step ${step} = ${String(stepHour12).padStart(2, "0")}:00 ${stepAmPm}, Day ${stepDay}`;
+
   const parsed_amount_for_preview = parseFloat(amountRawValue) || 0;
   const projected_balance = currentBalance - parsed_amount_for_preview;
   const is_insufficient_funds = parsed_amount_for_preview > currentBalance;
@@ -89,7 +104,7 @@ export function TransactionForm({ onTransactionApproved, refreshTrigger }: Trans
     }
 
     // Rule 3: Destination account must not be the same as the sender
-    if (targetAccount.trim() === userId) {
+    if (targetAccount.trim() === senderAccount) {
       return "You cannot transfer money to your own account. Please enter a different recipient.";
     }
 
@@ -125,8 +140,9 @@ export function TransactionForm({ onTransactionApproved, refreshTrigger }: Trans
         newbalanceOrig: currentBalance - parsed_amount,
         oldbalanceDest: 0,
         newbalanceDest: parsed_amount,
-        user_id: userId,
-        destination_account_id: targetAccount
+        user_id: senderAccount,
+        destination_account_id: targetAccount,
+        step: step,
       };
       const prediction_result = await predictPrimary(transaction_payload);
 
@@ -155,6 +171,8 @@ export function TransactionForm({ onTransactionApproved, refreshTrigger }: Trans
           toast.error("Transaction data is invalid. Please check your input values.");
         } else if (submission_error.response?.status === 503) {
           toast.error("Fraud detection service is temporarily unavailable. Please try again.");
+        } else if (submission_error.response?.status === 403) {
+          toast.error(error_detail || "Account is temporarily frozen. Contact support.");
         } else {
           toast.error(`Transaction failed: ${error_detail || "An unexpected error occurred."}`);
         }
@@ -176,18 +194,24 @@ export function TransactionForm({ onTransactionApproved, refreshTrigger }: Trans
         </h2>
         
         <form onSubmit={handleSubmit} className="space-y-6">
+          {/* ─── Row 1: Sender Account | Recipient Account ──────────────── */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             <div className="space-y-2">
-              <Label>Transfer Type</Label>
-              <Select value={type} onValueChange={setType}>
+              <Label>Sender Account ID</Label>
+              <Select value={senderAccount} onValueChange={(newAccount) => {
+                setSenderAccount(newAccount);
+                setUserId(newAccount);
+                setHasActivelySelectedUser(true);
+              }}>
                 <SelectTrigger className="h-12 rounded-xl">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="TRANSFER">P2P Transfer</SelectItem>
-                  <SelectItem value="CASH OUT">Cash Withdrawal</SelectItem>
-                  <SelectItem value="PAYMENT">Merchant Payment</SelectItem>
-                  <SelectItem value="DEBIT">Bank Debit</SelectItem>
+                  {MOCK_USERS.map((user) => (
+                    <SelectItem key={user.id} value={user.id}>
+                      {user.name} ({user.id})
+                    </SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
             </div>
@@ -195,18 +219,36 @@ export function TransactionForm({ onTransactionApproved, refreshTrigger }: Trans
             <div className="space-y-2">
               <Label>Recipient Account ID</Label>
               <Input 
-                placeholder="C123456789" 
-                className={`h-12 rounded-xl font-mono ${targetAccount.trim() === userId ? 'border-danger ring-danger' : ''}`}
+                placeholder="e.g. user_2" 
+                className={`h-12 rounded-xl font-mono ${targetAccount.trim() === senderAccount ? 'border-danger ring-danger' : ''}`}
                 value={targetAccount}
                 onChange={e => setTargetAccount(e.target.value)}
                 required
               />
-              {targetAccount.trim() === userId && (
+              {targetAccount.trim() === senderAccount && (
                  <p className="text-xs font-medium text-danger">You cannot transfer money to your own account.</p>
               )}
             </div>
           </div>
 
+          {/* ─── Row 2: Transfer Type ────────────────────────────────────── */}
+          <div className="space-y-2">
+            <Label>Transfer Type</Label>
+            <Select value={type} onValueChange={setType}>
+              <SelectTrigger className="h-12 rounded-xl">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="TRANSFER">P2P Transfer</SelectItem>
+                <SelectItem value="CASH OUT">Cash Withdrawal</SelectItem>
+                <SelectItem value="CASH IN">Cash Deposit</SelectItem>
+                <SelectItem value="PAYMENT">Merchant Payment</SelectItem>
+                <SelectItem value="DEBIT">Bank Debit</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+
+          {/* ─── Row 3: Amount ───────────────────────────────────────────── */}
           <div className="space-y-2">
             <Label>Amount (USD)</Label>
             <div className="relative">
@@ -271,7 +313,7 @@ export function TransactionForm({ onTransactionApproved, refreshTrigger }: Trans
         </form>
       </div>
 
-      {/* Wallet Info */}
+      {/* ─── Sidebar: Wallet + Hour of Day ────────────────────────────────── */}
       <div className="space-y-6">
         <div className="bg-primary text-primary-foreground rounded-3xl p-8 shadow-xl relative overflow-hidden group">
           <div className="absolute -right-8 -top-8 opacity-10 group-hover:scale-110 transition-transform duration-500">
@@ -285,26 +327,32 @@ export function TransactionForm({ onTransactionApproved, refreshTrigger }: Trans
               <div className="bg-white/20 px-3 py-1 rounded-full flex items-center gap-2">
                 <div className="h-2 w-2 rounded-full bg-green-400 animate-pulse" /> Active
               </div>
-              <p className="text-primary-foreground/60">{userId}</p>
+              <p className="text-primary-foreground/60">{senderAccount}</p>
             </div>
           </div>
         </div>
 
+        {/* ─── Hour of Day Card (replaces Security Status) ──────────────── */}
         <div className="bg-card border rounded-3xl p-6">
-          <h4 className="font-bold mb-4 flex items-center gap-2">
-            <Landmark className="h-4 w-4" /> Security Status
+          <h4 className="font-bold mb-2 flex items-center gap-2">
+            <Clock className="h-4 w-4" /> Hour of Day
           </h4>
-          <div className="space-y-4">
-            <div className="flex items-center gap-3">
-              <div className="p-2 bg-success/10 text-success rounded-lg">
-                <CreditCard className="h-4 w-4" />
-              </div>
-              <div>
-                <p className="text-sm font-bold">2FA Enabled</p>
-                <p className="text-xs text-muted-foreground">Biometric primary authentication</p>
-              </div>
-            </div>
-          </div>
+          <p className="text-xs text-muted-foreground mb-4">
+            Simulates the time of day for this transaction. The fraud detection model uses time patterns — adjust this value for demonstration purposes.
+          </p>
+          <Input
+            type="number"
+            min={0}
+            max={743}
+            step={1}
+            value={step}
+            onChange={(e) => setStep(Math.max(0, Math.min(743, parseInt(e.target.value) || 0)))}
+            className="h-12 rounded-xl font-mono mb-3"
+            aria-label="Hour of day simulation step"
+          />
+          <span className="bg-accent/50 text-accent-foreground font-mono text-sm px-3 py-1 rounded-full inline-block">
+            {stepBadgeText}
+          </span>
         </div>
       </div>
     </div>

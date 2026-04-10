@@ -14,20 +14,27 @@ import {
   TransactionRecord,
   AuditLogEntry,
   BusinessRules,
-  notifyAdminQueueOverflow
+  notifyAdminQueueOverflow,
+  getFrozenAccounts,
+  unfreezeAccount,
+  getFreezeConfig,
+  updateFreezeConfig,
+  FrozenAccountEntry,
+  FreezeConfig,
 } from "@/api";
 import { 
   Settings, 
   Shield, 
   ClipboardCheck, 
-  BarChart3, 
   Save, 
   Activity,
   History,
   CheckCircle2,
   XCircle,
   AlertTriangle,
-  User
+  User,
+  Lock,
+  Unlock,
 } from "lucide-react";
 import { toast } from "sonner";
 import { useAuth } from "@/context/AuthContext";
@@ -35,11 +42,18 @@ import { Navigate } from "react-router-dom";
 import { formatCurrencyToUSD } from "@/lib/utils";
 
 export default function Admin() {
-  const { isAdmin } = useAuth();
+  const { isAdmin, userId } = useAuth();
   const [config, setConfig] = useState<BusinessRules | null>(null);
   const [transactions, setTransactions] = useState<TransactionRecord[]>([]);
   const [auditLogs, setAuditLogs] = useState<AuditLogEntry[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+
+  // ─── Account Security State ───────────────────────────────────────────────
+  const [frozenAccounts, setFrozenAccounts] = useState<FrozenAccountEntry[]>([]);
+  const [freezeConfigState, setFreezeConfigState] = useState<FreezeConfig>({
+    max_failed_otp_attempts: 3,
+    observation_window_minutes: 10,
+  });
 
   useEffect(() => {
     if (isAdmin) {
@@ -50,14 +64,18 @@ export default function Admin() {
   const loadData = async () => {
     setIsLoading(true);
     try {
-      const [configData, transData, logsData] = await Promise.all([
+      const [configData, transData, logsData, frozenData, freezeCfg] = await Promise.all([
         getConfiguration(),
-        getAllTransactionsAdmin(),
-        getAuditLogs()
+        getAllTransactionsAdmin("admin_1"),
+        getAuditLogs(),
+        getFrozenAccounts(),
+        getFreezeConfig(),
       ]);
       setConfig(configData.business_rules);
       setTransactions(transData);
       setAuditLogs(logsData);
+      setFrozenAccounts(frozenData);
+      setFreezeConfigState(freezeCfg);
     } catch (error) {
       toast.error("Failed to load admin data");
     } finally {
@@ -87,7 +105,30 @@ export default function Admin() {
     }
   };
 
+  // ─── Account Security Handlers ────────────────────────────────────────────
+  const handleUnfreeze = async (accountUserId: string) => {
+    try {
+      await unfreezeAccount(accountUserId);
+      toast.success(`Account ${accountUserId} unfrozen.`);
+      const updated = await getFrozenAccounts();
+      setFrozenAccounts(updated);
+      const logs = await getAuditLogs();
+      setAuditLogs(logs);
+    } catch (error) {
+      toast.error("Failed to unfreeze account.");
+    }
+  };
 
+  const handleSaveFreezeConfig = async () => {
+    try {
+      await updateFreezeConfig(freezeConfigState);
+      toast.success("Freeze configuration updated.");
+      const logs = await getAuditLogs();
+      setAuditLogs(logs);
+    } catch (error) {
+      toast.error("Failed to update freeze configuration.");
+    }
+  };
 
   const pendingReview = useMemo(() => 
     transactions.filter(t => t.status === "PENDING_ADMIN_REVIEW"), 
@@ -139,6 +180,10 @@ export default function Admin() {
             <TabsTrigger value="config" className="gap-2 rounded-lg">
               <Settings className="h-4 w-4" />
               System Config
+            </TabsTrigger>
+            <TabsTrigger value="security" className="gap-2 rounded-lg">
+              <Lock className="h-4 w-4" />
+              Account Security
             </TabsTrigger>
             <TabsTrigger value="audit" className="gap-2 rounded-lg">
               <History className="h-4 w-4" />
@@ -259,7 +304,7 @@ export default function Admin() {
             </div>
           </TabsContent>
 
-          {/* Configuration Editor */}
+          {/* ─── Configuration Editor ──────────────────────────────────────── */}
           <TabsContent value="config">
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
               <div className="bg-card border rounded-2xl p-8 shadow-sm">
@@ -275,34 +320,6 @@ export default function Admin() {
 
                 {config && (
                   <div className="space-y-6">
-                    <div className="space-y-2">
-                      <Label htmlFor="large-txn">High-Value Transfer Limit ($)</Label>
-                      <Input 
-                        id="large-txn"
-                        type="number"
-                        value={config.large_transfer_limit_amount}
-                        className="font-mono h-12 rounded-xl"
-                        onChange={e => setConfig({...config, large_transfer_limit_amount: parseFloat(e.target.value)})}
-                      />
-                      <p className="text-xs text-muted-foreground italic">
-                        Transactions above this amount will be held for manual security review.
-                      </p>
-                    </div>
-
-                    <div className="space-y-2">
-                      <Label htmlFor="velocity">Standard Daily Sending Limit ($)</Label>
-                      <Input 
-                        id="velocity"
-                        type="number"
-                        value={config.daily_velocity_limit}
-                        className="font-mono h-12 rounded-xl"
-                        onChange={e => setConfig({...config, daily_velocity_limit: parseFloat(e.target.value)})}
-                      />
-                      <p className="text-xs text-muted-foreground italic">
-                        The maximum total volume allowed for a single account within a 24-hour window.
-                      </p>
-                    </div>
-
                     <div className="pt-4 border-t">
                       <h4 className="text-sm font-bold uppercase tracking-wider text-primary mb-4">Autonomous AI Safeguards</h4>
                       <div className="space-y-4">
@@ -341,6 +358,115 @@ export default function Admin() {
                 <p className="text-center text-muted-foreground text-sm max-w-sm mx-auto">
                   Updating these parameters will immediately overwrite the <code className="bg-primary/10 px-1 rounded">model_configuration.json</code> on the backend. ML thresholds can only be modified via the automated generation script.
                 </p>
+              </div>
+            </div>
+          </TabsContent>
+
+          {/* ─── Account Security Tab ─────────────────────────────────────── */}
+          <TabsContent value="security" className="space-y-6">
+            {/* Frozen Accounts List */}
+            <div className="bg-card border rounded-2xl shadow-sm">
+              <div className="p-6 border-b bg-muted/30">
+                <h3 className="font-bold flex items-center gap-2">
+                  <Lock className="h-5 w-5 text-danger" />
+                  Frozen Accounts
+                </h3>
+                <p className="text-sm text-muted-foreground mt-1">Accounts temporarily suspended due to suspicious activity.</p>
+              </div>
+              <div className="p-4">
+                {frozenAccounts.length === 0 ? (
+                  <div className="p-8 text-center">
+                    <CheckCircle2 className="h-10 w-10 text-success mx-auto mb-3 opacity-20" />
+                    <p className="text-muted-foreground font-medium">No frozen accounts. All accounts are active.</p>
+                  </div>
+                ) : (
+                  <div className="space-y-3">
+                    {frozenAccounts.map((account) => (
+                      <div key={account.user_id} className="flex items-center justify-between p-4 rounded-xl bg-danger/5 border border-danger/10">
+                        <div className="flex items-center gap-4">
+                          <div className="p-2 bg-danger/10 rounded-lg">
+                            <Lock className="h-5 w-5 text-danger" />
+                          </div>
+                          <div>
+                            <p className="font-bold text-sm">{account.user_id}</p>
+                            <p className="text-xs text-muted-foreground">{account.reason}</p>
+                            <p className="text-[10px] text-muted-foreground font-mono mt-0.5">
+                              Frozen: {new Date(account.frozen_at).toLocaleString()}
+                            </p>
+                          </div>
+                        </div>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="gap-2"
+                          onClick={() => handleUnfreeze(account.user_id)}
+                        >
+                          <Unlock className="h-4 w-4" />
+                          Unfreeze
+                        </Button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Freeze Configuration */}
+            <div className="bg-card border rounded-2xl p-8 shadow-sm">
+              <div className="flex items-center gap-3 mb-6">
+                <div className="p-2 bg-primary/10 rounded-lg text-primary">
+                  <Shield className="h-6 w-6" />
+                </div>
+                <div>
+                  <h3 className="text-xl font-bold">Freeze Configuration</h3>
+                  <p className="text-sm text-muted-foreground">Thresholds for automatic account freezing.</p>
+                </div>
+              </div>
+              <div className="space-y-6">
+                <div className="space-y-2">
+                  <Label htmlFor="max-otp-attempts">Max Failed OTP Attempts</Label>
+                  <Input
+                    id="max-otp-attempts"
+                    type="number"
+                    min={1}
+                    max={20}
+                    value={freezeConfigState.max_failed_otp_attempts}
+                    className="font-mono h-12 rounded-xl"
+                    onChange={(e) =>
+                      setFreezeConfigState({
+                        ...freezeConfigState,
+                        max_failed_otp_attempts: Math.max(1, Math.min(20, parseInt(e.target.value) || 1)),
+                      })
+                    }
+                  />
+                  <p className="text-xs text-muted-foreground italic">
+                    Number of failed OTP attempts before the account is automatically frozen (1–20).
+                  </p>
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="obs-window">Observation Window (minutes)</Label>
+                  <Input
+                    id="obs-window"
+                    type="number"
+                    min={1}
+                    max={60}
+                    value={freezeConfigState.observation_window_minutes}
+                    className="font-mono h-12 rounded-xl"
+                    onChange={(e) =>
+                      setFreezeConfigState({
+                        ...freezeConfigState,
+                        observation_window_minutes: Math.max(1, Math.min(60, parseInt(e.target.value) || 1)),
+                      })
+                    }
+                  />
+                  <p className="text-xs text-muted-foreground italic">
+                    Time window for counting failed OTP attempts (1–60 minutes).
+                  </p>
+                </div>
+                <Button onClick={handleSaveFreezeConfig} className="w-full h-14 rounded-2xl text-lg font-bold gap-3 shadow-lg shadow-primary/20 transition-all hover:scale-[1.01]">
+                  <Save className="h-5 w-5" />
+                  Save Freeze Configuration
+                </Button>
               </div>
             </div>
           </TabsContent>

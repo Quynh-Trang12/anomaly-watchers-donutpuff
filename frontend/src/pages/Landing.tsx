@@ -110,9 +110,9 @@ export default function Landing() {
                   </Link>
                 </Button>
                 <Button asChild variant="outline" size="lg" className="w-full sm:w-auto gap-2 h-12 px-8 text-base">
-                  <Link to="/admin">
-                    <Shield className="h-5 w-5" aria-hidden="true" />
-                    Admin Console
+                  <Link to="/about">
+                    <Users className="h-5 w-5" aria-hidden="true" />
+                    Meet the Team
                   </Link>
                 </Button>
               </div>

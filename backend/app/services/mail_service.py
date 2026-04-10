@@ -87,6 +87,5 @@ async def send_security_alert_email(recipient_email: str, otp_code: str, transac
             f"  OOB SECURITY CODE — CHECK THIS TO TEST STEP-UP\n"
             f"  Recipient : {recipient_email}\n"
             f"  OTP Code  : {otp_code}\n"
-            f"  (Hint: Demo OTP in OTPChallenge.tsx is '123456')\n"
             f"{'='*50}\n"
         )

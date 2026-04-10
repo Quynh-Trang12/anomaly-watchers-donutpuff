@@ -11,10 +11,9 @@ import {
   History, 
   AlertTriangle,
   Mail,
+  Download,
   CheckCircle2,
-  XCircle,
-  Wallet,
-  Download
+  XCircle
 } from "lucide-react";
 import { useAuth } from "@/context/AuthContext";
 import { OTPChallenge } from "@/components/result/OTPChallenge";
@@ -37,7 +36,7 @@ export default function Result() {
     }
     setPrediction(prediction_data);
     
-    // Critical: explicitly mount OTP challenge for step-up transactions
+    // Show OTP challenge for step-up transactions
     if (prediction_data.status === "PENDING_USER_OTP") {
       setShowOTP(true);
     }
@@ -82,7 +81,7 @@ export default function Result() {
   const handleOTPFail = () => {
     setShowOTP(false);
     setState("REJECTED");
-    toast.error("Verification failed.");
+    toast.error("Verification failed. Transaction cancelled.");
   };
 
   if (!prediction) return null;
@@ -93,7 +92,7 @@ export default function Result() {
 
   const isBlocked = prediction.status === "BLOCKED" || state === "REJECTED";
   const isApproved = prediction.status === "APPROVED" || state === "VERIFIED";
-  const isPendingReview = prediction.status === "PENDING_ADMIN_REVIEW";
+  const isPending = prediction.status === "PENDING_USER_OTP";
 
   return (
     <Layout>
@@ -109,16 +108,16 @@ export default function Result() {
               <div className="inline-flex items-center justify-center p-4 bg-danger/10 rounded-full text-danger mb-2">
                 <ShieldAlert className="h-16 w-16" />
               </div>
-            ) : (
+            ) : isPending ? (
               <div className="inline-flex items-center justify-center p-4 bg-warning/10 rounded-full text-warning mb-2">
                 <Clock className="h-16 w-16" />
               </div>
-            )}
+            ) : null}
             
             <h1 className="text-4xl font-black tracking-tight">
               {isApproved ? "Transaction Secure" : 
                isBlocked ? "Transaction Blocked" : 
-               "Verification Required"}
+               isPending ? "Verification Required" : ""}
             </h1>
             <p className="text-muted-foreground text-lg">{prediction.explanation}</p>
           </div>
@@ -158,17 +157,6 @@ export default function Result() {
                 onSuccess={handleOTPSuccess} 
                 onFail={handleOTPFail} 
               />
-            </div>
-          )}
-
-          {/* Verification / Review Status */}
-          {isPendingReview && (
-            <div className="bg-warning/5 border border-warning/20 rounded-3xl p-8 text-center space-y-4">
-              <AlertTriangle className="h-12 w-12 text-warning mx-auto" />
-              <h3 className="text-xl font-bold">Administrative Review</h3>
-              <p className="text-muted-foreground max-w-md mx-auto">
-                Due to the large transaction volume, this transfer has been queued for manual review by our security team. You will be notified once processed.
-              </p>
             </div>
           )}
 

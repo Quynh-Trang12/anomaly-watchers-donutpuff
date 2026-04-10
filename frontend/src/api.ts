@@ -2,7 +2,7 @@ import axios from "axios";
 
 const API_BASE_URL = "http://localhost:8000/api";
 
-export type TransactionStatus = "APPROVED" | "BLOCKED" | "PENDING_USER_OTP" | "PENDING_ADMIN_REVIEW";
+export type TransactionStatus = "APPROVED" | "BLOCKED" | "PENDING_USER_OTP" | "CANCELLED";
 
 export interface RiskFactor {
   factor: string;
@@ -18,6 +18,7 @@ export interface TransactionInput {
   newbalanceDest: number;
   user_id: string;
   destination_account_id: string;
+  step: number;
 }
 
 export interface PredictionOutput {
@@ -33,6 +34,7 @@ export interface PredictionOutput {
 export interface TransactionRecord {
   transaction_id: string;
   owner_user_id: string;
+  destination_account_id?: string;
   amount: number;
   type: string;
   status: TransactionStatus;
@@ -42,8 +44,6 @@ export interface TransactionRecord {
 }
 
 export interface BusinessRules {
-  large_transfer_limit_amount: number;
-  daily_velocity_limit: number;
   restricted_flagged_status: boolean;
 }
 
@@ -136,4 +136,35 @@ export const getActiveThresholds = async (): Promise<{ block_threshold: number; 
 
 export const notifyAdminQueueOverflow = async (queue_size: number): Promise<void> => {
   await axios.post(`${API_BASE_URL}/admin/notify/queue_overflow`, { queue_size });
+};
+
+export interface FrozenAccountEntry {
+  user_id: string;
+  frozen_at: string;
+  reason: string;
+}
+
+export interface FreezeConfig {
+  max_failed_otp_attempts: number;
+  observation_window_minutes: number;
+}
+
+export const getFrozenAccounts = async (): Promise<FrozenAccountEntry[]> => {
+  const response = await axios.get(`${API_BASE_URL}/admin/frozen-accounts`);
+  return response.data;
+};
+
+export const unfreezeAccount = async (userId: string, adminId: string = "admin_1"): Promise<{ status: string; message: string }> => {
+  const response = await axios.post(`${API_BASE_URL}/admin/unfreeze/${userId}?admin_id=${adminId}`);
+  return response.data;
+};
+
+export const getFreezeConfig = async (): Promise<FreezeConfig> => {
+  const response = await axios.get(`${API_BASE_URL}/admin/freeze-config`);
+  return response.data;
+};
+
+export const updateFreezeConfig = async (config: FreezeConfig, adminId: string = "admin_1"): Promise<{ status: string; message: string }> => {
+  const response = await axios.put(`${API_BASE_URL}/admin/freeze-config?admin_id=${adminId}`, config);
+  return response.data;
 };

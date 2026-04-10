@@ -101,8 +101,6 @@ def main():
             "step_up_threshold": step_up_threshold
         },
         "business_rules": {
-            "large_transfer_limit_amount": 150000.0,
-            "daily_velocity_limit": 500000.0,
             "restricted_flagged_status": True
         }
     }

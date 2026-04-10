@@ -23,7 +23,7 @@ class TransactionStatusEnum(str, Enum):
     APPROVED = "APPROVED"
     BLOCKED = "BLOCKED"
     PENDING_USER_OTP = "PENDING_USER_OTP"
-    PENDING_ADMIN_REVIEW = "PENDING_ADMIN_REVIEW"
+    CANCELLED = "CANCELLED"
 
 
 class TransactionInput(BaseModel):
@@ -37,6 +37,7 @@ class TransactionInput(BaseModel):
     newbalanceDest: float = Field(default=0, ge=0)
     user_id: str = Field(default="user_123")
     destination_account_id: str = Field(default="")
+    step: int = Field(default=0, ge=0)
 
 
 class RiskFactor(BaseModel):
@@ -68,8 +69,6 @@ class TransactionRecord(BaseModel):
 
 
 class BusinessRulesUpdate(BaseModel):
-    large_transfer_limit_amount: float
-    daily_velocity_limit: float
     restricted_flagged_status: bool
 
 
@@ -94,3 +93,14 @@ class HealthResponse(BaseModel):
 
 class QueueOverflowNotify(BaseModel):
     queue_size: int
+
+
+class FreezeConfig(BaseModel):
+    max_failed_otp_attempts: int = Field(..., ge=1, le=20)
+    observation_window_minutes: int = Field(..., ge=1, le=60)
+
+
+class FrozenAccountEntry(BaseModel):
+    user_id: str
+    frozen_at: datetime
+    reason: str

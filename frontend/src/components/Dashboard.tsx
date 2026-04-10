@@ -18,31 +18,25 @@ import {
   Scatter,
   ZAxis,
   ReferenceLine,
+  Legend,
+  LabelList,
 } from "recharts";
-import { predictPrimary, TransactionInput, PredictionOutput, getActiveThresholds, getAllTransactionsAdmin, getUserOwnTransactions } from "../api";
+import { getActiveThresholds, getAllTransactionsAdmin, getUserOwnTransactions, TransactionRecord } from "../api";
 import {
   AlertTriangle,
   ShieldCheck,
   Activity,
-  Play,
-  Square,
   TrendingUp,
-  Download
+  Download,
+  RefreshCw,
 } from "lucide-react";
 import { formatCurrencyToUSD } from "@/lib/utils";
 import { toast } from "sonner";
 
-// ---------------------------------------------------------------------------
-// Constants
-// ---------------------------------------------------------------------------
-const SIMULATION_INTERVAL_MS = 800;
-const MAX_LIVE_POINTS = 30;
-const FRAUD_BURST_WINDOW_MS = 10_000;
-const FRAUD_BURST_DURATION_MS = 3_000;
+// ─── Constants ──────────────────────────────────────────────────────────────
+const MAX_CHART_POINTS = 30;
 
-// ---------------------------------------------------------------------------
-// Animation Variants
-// ---------------------------------------------------------------------------
+// ─── Animation Variants ─────────────────────────────────────────────────────
 const cardVariants = {
   hidden: { opacity: 0, y: 20, scale: 0.97 },
   visible: (i: number) => ({
@@ -53,17 +47,8 @@ const cardVariants = {
   }),
 };
 
-const pulseVariant = {
-  pulse: {
-    scale: [1, 1.05, 1],
-    transition: { duration: 1.2, repeat: Infinity, ease: "easeInOut" as const },
-  },
-};
-
-// ---------------------------------------------------------------------------
-// Types
-// ---------------------------------------------------------------------------
-interface LivePoint {
+// ─── Types ──────────────────────────────────────────────────────────────────
+interface ChartPoint {
   time: string;
   risk: number;
   isFraud: boolean;
@@ -74,13 +59,11 @@ interface LivePoint {
 interface Stats {
   approved: number;
   blocked: number;
-  pending: number;
+  cancelled: number;
   total: number;
 }
 
-// ---------------------------------------------------------------------------
-// Component: Stat Card with motion
-// ---------------------------------------------------------------------------
+// ─── Stat Card Component ────────────────────────────────────────────────────
 const StatCard: React.FC<{
   label: string;
   value: React.ReactNode;
@@ -103,151 +86,87 @@ const StatCard: React.FC<{
   </motion.div>
 );
 
-// ---------------------------------------------------------------------------
-// Dashboard Component
-// ---------------------------------------------------------------------------
+// ─── Dashboard Component ────────────────────────────────────────────────────
 const Dashboard: React.FC = () => {
   const { userId, isAdmin } = useAuth();
-  const [stats, setStats] = useState<Stats>({ approved: 0, blocked: 0, pending: 0, total: 0 });
-  const [liveData, setLiveData] = useState<LivePoint[]>([]);
-  const [isSimulating, setIsSimulating] = useState(false);
+  const [stats, setStats] = useState<Stats>({ approved: 0, blocked: 0, cancelled: 0, total: 0 });
+  const [chartData, setChartData] = useState<ChartPoint[]>([]);
   const [currentRisk, setCurrentRisk] = useState(0);
-  const [lastResult, setLastResult] = useState<PredictionOutput | null>(null);
+  const [lastResult, setLastResult] = useState<TransactionRecord | null>(null);
   const [thresholds, setThresholds] = useState({ block_threshold: 0.5, step_up_threshold: 0.4 });
 
-  useEffect(() => {
-    const fetchData = async () => {
-      try {
-        // Fetch thresholds
-        const thresholdData = await getActiveThresholds();
-        setThresholds(thresholdData);
+  // ─── Data Fetching ──────────────────────────────────────────────────────
+  const fetchData = useCallback(async () => {
+    try {
+      const thresholdData = await getActiveThresholds();
+      setThresholds(thresholdData);
 
-        // Load historical transaction data based on role
-        // ADMIN users see all transactions; regular users see only their own
-        let historicalData: any[];
-        if (isAdmin) {
-          historicalData = await getAllTransactionsAdmin(userId);
-        } else {
-          historicalData = await getUserOwnTransactions(userId, userId);
-        }
-        
-        // Transform historical data for the charts
-        const mappedData: LivePoint[] = historicalData.slice(-MAX_LIVE_POINTS).map(txn => ({
-          time: new Date(txn.timestamp).toLocaleTimeString(),
-          risk: txn.probability_score,
-          isFraud: txn.status === "BLOCKED",
-          amount: txn.amount,
-          status: txn.status
-        }));
-        setLiveData(mappedData);
+      let historicalData: TransactionRecord[];
+      if (isAdmin) {
+        historicalData = await getAllTransactionsAdmin(userId);
+      } else {
+        historicalData = await getUserOwnTransactions(userId, userId);
+      }
+      
+      // Transform historical data for the charts
+      const mappedData: ChartPoint[] = historicalData.slice(-MAX_CHART_POINTS).map(txn => ({
+        time: new Date(txn.timestamp).toLocaleTimeString(),
+        risk: txn.probability_score,
+        isFraud: txn.status === "BLOCKED",
+        amount: txn.amount,
+        status: txn.status,
+      }));
+      setChartData(mappedData);
 
-        // Update stats summary based on historical data
-        const summary = historicalData.reduce((acc, txn) => ({
+      // Compute stats with cancelled category
+      const summary = historicalData.reduce(
+        (acc, txn) => ({
           approved: acc.approved + (txn.status === "APPROVED" ? 1 : 0),
           blocked: acc.blocked + (txn.status === "BLOCKED" ? 1 : 0),
-          pending: acc.pending + (txn.status.startsWith("PENDING") ? 1 : 0),
+          cancelled: acc.cancelled + (txn.status === "CANCELLED" ? 1 : 0),
           total: acc.total + 1,
-        }), { approved: 0, blocked: 0, pending: 0, total: 0 });
-        
-        setStats(summary);
-        if (mappedData.length > 0) {
-          setCurrentRisk(mappedData[mappedData.length - 1].risk);
-        }
-      } catch (error) {
-        console.error("Failed to fetch initial dashboard data:", error);
+        }),
+        { approved: 0, blocked: 0, cancelled: 0, total: 0 },
+      );
+      setStats(summary);
+
+      // Populate last result for XAI panel from most recent transaction
+      if (historicalData.length > 0) {
+        const mostRecent = historicalData[historicalData.length - 1];
+        setLastResult(mostRecent);
+        setCurrentRisk(mostRecent.probability_score);
       }
-    };
-    fetchData();
+    } catch (error) {
+      console.error("Failed to fetch dashboard data:", error);
+    }
   }, [userId, isAdmin]);
 
-  // Generate a realistic fake transaction
-  const generateTransaction = useCallback((): TransactionInput => {
-    const now = Date.now();
-    const isFraudBurst = now % FRAUD_BURST_WINDOW_MS < FRAUD_BURST_DURATION_MS;
-
-    if (isFraudBurst && Math.random() > 0.3) {
-      // Fraud-like transaction: CASH OUT draining account
-      return {
-        type: "CASH OUT",
-        amount: 90_000 + Math.random() * 50_000,
-        oldbalanceOrg: 90_000 + Math.random() * 50_000,
-        newbalanceOrig: 0,
-        oldbalanceDest: 0,
-        newbalanceDest: 0,
-        user_id: "user_1",
-        destination_account_id: "user_2"
-      };
-    }
-
-    // Normal transaction
-    return {
-      type: "PAYMENT",
-      amount: Math.random() * 500,
-      oldbalanceOrg: 5_000 + Math.random() * 1_000,
-      newbalanceOrig: 4_500 + Math.random() * 1_000,
-      oldbalanceDest: 0,
-      newbalanceDest: 0,
-      user_id: "user_1",
-      destination_account_id: "user_2"
-    };
-  }, []);
-
-  // Simulation loop
   useEffect(() => {
-    let interval: ReturnType<typeof setInterval>;
+    fetchData();
+  }, [fetchData]);
 
-    if (isSimulating) {
-      interval = setInterval(async () => {
-        const fakeInput = generateTransaction();
+  // ─── Chart Data ───────────────────────────────────────────────────────────
 
-        try {
-          const result = await predictPrimary(fakeInput);
-          setLastResult(result);
-
-          setStats((prev) => ({
-            approved: prev.approved + (result.status === "APPROVED" ? 1 : 0),
-            blocked: prev.blocked + (result.status === "BLOCKED" ? 1 : 0),
-            pending: prev.pending + (result.status.startsWith("PENDING") ? 1 : 0),
-            total: prev.total + 1,
-          }));
-
-          setCurrentRisk(result.probability);
-
-          setLiveData((prev) => {
-            const next: LivePoint[] = [
-              ...prev,
-              {
-                time: new Date().toLocaleTimeString(),
-                risk: result.probability,
-                isFraud: result.is_fraud,
-                amount: fakeInput.amount,
-                status: result.status
-              },
-            ];
-            if (next.length > MAX_LIVE_POINTS) next.shift();
-            return next;
-          });
-        } catch (e) {
-          console.error("Simulation error:", e);
-        }
-      }, SIMULATION_INTERVAL_MS);
-    }
-
-    return () => clearInterval(interval);
-  }, [isSimulating, generateTransaction]);
-
-  // Chart data
   const distributionData = [
     { name: "Approved", count: stats.approved },
     { name: "Blocked", count: stats.blocked },
-    { name: "Under Review", count: stats.pending },
+    { name: "Cancelled", count: stats.cancelled },
   ];
 
+  // ─── Histogram Data ───────────────────────────────────────────────────────
+  const histogramData = Array.from({ length: 10 }, (_, i) => {
+    const low = i * 0.1;
+    const high = low + 0.1;
+    return {
+      range: `${i * 10}–${i * 10 + 10}%`,
+      count: chartData.filter(d => d.risk >= low && d.risk < high).length,
+      isHighRisk: i >= 5,
+    };
+  });
 
-
-  const handleExportLiveData = () => {
+  const handleExportCSV = () => {
     const csv_header = "Timestamp,Amount,Risk Probability,Status,Is Fraud\n";
-    const csv_rows = liveData.map(point => 
+    const csv_rows = chartData.map(point => 
       `"${point.time}",${point.amount},${point.risk},${point.status},${point.isFraud}`
     ).join("\n");
     
@@ -255,10 +174,10 @@ const Dashboard: React.FC = () => {
     const download_url = URL.createObjectURL(csv_blob);
     const anchor_element = document.createElement("a");
     anchor_element.href = download_url;
-    anchor_element.download = `AnomalyWatchers_LiveStream_${new Date().toISOString()}.csv`;
+    anchor_element.download = `AnomalyWatchers_Dashboard_${new Date().toISOString()}.csv`;
     anchor_element.click();
     URL.revokeObjectURL(download_url);
-    toast.success("Live stream data exported as CSV.");
+    toast.success("Dashboard data exported as CSV.");
   };
 
   const riskColor =
@@ -271,7 +190,7 @@ const Dashboard: React.FC = () => {
   return (
     <Layout>
       <div className="container py-6 sm:py-8 space-y-8">
-        {/* Header */}
+        {/* ─── Header ──────────────────────────────────────────────────────── */}
         <motion.div
           className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4"
           initial={{ opacity: 0, y: -10 }}
@@ -283,51 +202,35 @@ const Dashboard: React.FC = () => {
               Transaction Security Monitoring
             </h1>
             <p className="text-muted-foreground mt-1">
-              Real-time analysis of payment activity
+              Historical analysis of payment activity
             </p>
           </div>
 
           <div className="flex items-center gap-4 bg-card p-2 rounded-lg border border-border shadow-sm">
-            <AnimatePresence mode="wait">
-              <motion.span
-                key={isSimulating ? "active" : "standby"}
-                initial={{ opacity: 0, scale: 0.9 }}
-                animate={{ opacity: 1, scale: 1 }}
-                exit={{ opacity: 0, scale: 0.9 }}
-                className={`px-3 py-1 rounded-full text-sm font-medium text-muted-foreground`}
-              >
-                Last updated: {new Date().toLocaleTimeString()}
-              </motion.span>
-            </AnimatePresence>
+            <span className="px-3 py-1 rounded-full text-sm font-medium text-muted-foreground">
+              Last updated: {new Date().toLocaleTimeString()}
+            </span>
 
             <Button
-              onClick={handleExportLiveData}
+              onClick={handleExportCSV}
               variant="outline"
               className="gap-2"
-              disabled={liveData.length === 0}
+              disabled={chartData.length === 0}
             >
               <Download className="w-4 h-4" /> Export CSV
             </Button>
 
             <Button
-              onClick={() => setIsSimulating(!isSimulating)}
-              variant={isSimulating ? "destructive" : "default"}
+              onClick={fetchData}
+              variant="default"
               className="gap-2"
             >
-              {isSimulating ? (
-                <>
-                  <Square className="w-4 h-4 fill-current" /> Stop Stream
-                </>
-              ) : (
-                <>
-                  <Play className="w-4 h-4 fill-current" /> Start Stream
-                </>
-              )}
+              <RefreshCw className="w-4 h-4" /> Refresh
             </Button>
           </div>
         </motion.div>
 
-        {/* Stats Cards */}
+        {/* ─── Stats Cards ─────────────────────────────────────────────────── */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
           <StatCard
             label="Transactions Scanned"
@@ -359,27 +262,15 @@ const Dashboard: React.FC = () => {
                 {(currentRisk * 100).toFixed(1)}%
               </span>
             }
-            icon={
-              isSimulating ? (
-                <motion.div variants={pulseVariant} animate="pulse">
-                  <ShieldCheck
-                    className={`w-6 h-6 ${
-                      currentRisk > 0.7 ? "text-danger" : "text-success"
-                    }`}
-                  />
-                </motion.div>
-              ) : (
-                <ShieldCheck className="w-6 h-6 text-success" />
-              )
-            }
+            icon={<ShieldCheck className="w-6 h-6 text-success" />}
             iconBg={currentRisk > 0.7 ? "bg-danger/10" : "bg-success/10"}
             index={2}
           />
         </div>
 
-        {/* Charts Grid */}
+        {/* ─── Charts Grid ─────────────────────────────────────────────────── */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-          {/* Capital Velocity Stream */}
+          {/* Chart 1: Fraud Risk Score Over Time */}
           <motion.div
             className="section-card"
             initial={{ opacity: 0, x: -20 }}
@@ -389,15 +280,15 @@ const Dashboard: React.FC = () => {
             <div className="mb-6">
               <h2 className="text-lg font-bold text-foreground flex items-center gap-2">
                 <TrendingUp className="w-5 h-5 text-primary" />
-                Real-Time Risk Monitoring
+                Fraud Risk Score Over Time
               </h2>
               <p className="text-sm text-muted-foreground">
-                Security risk score for each processed payment over time
+                ML model probability for each processed transaction — higher values indicate greater fraud likelihood
               </p>
             </div>
             <div className="h-[300px] w-full">
               <ResponsiveContainer>
-                <LineChart data={liveData}>
+                <LineChart data={chartData}>
                   <CartesianGrid
                     strokeDasharray="3 3"
                     vertical={false}
@@ -424,10 +315,15 @@ const Dashboard: React.FC = () => {
                       backgroundColor: "hsl(var(--card))",
                       color: "hsl(var(--card-foreground))",
                     }}
-                    formatter={(value: number) => [
-                      `${(value * 100).toFixed(1)}%`,
-                      "Risk Score",
-                    ]}
+                    formatter={(value: number, name: string) => {
+                      if (name === "risk") return [`${(value * 100).toFixed(1)}%`, "Risk Score"];
+                      return [value, name];
+                    }}
+                    labelFormatter={(label) => `Time: ${label}`}
+                  />
+                  <Legend
+                    wrapperStyle={{ fontSize: 12 }}
+                    formatter={() => "Fraud Risk Score (%)"}
                   />
                   <Line
                     type="monotone"
@@ -435,26 +331,29 @@ const Dashboard: React.FC = () => {
                     stroke="#3b82f6"
                     strokeWidth={2}
                     dot={false}
+                    activeDot={{ r: 6, strokeWidth: 2 }}
                     isAnimationActive={false}
                   />
                   <ReferenceLine 
                     y={thresholds.block_threshold} 
                     label={{ position: 'right', value: 'Auto-Block Limit', fill: '#ef4444', fontSize: 10 }} 
                     stroke="#ef4444" 
-                    strokeDasharray="3 3" 
+                    strokeDasharray="3 3"
+                    strokeWidth={1.5}
                   />
                   <ReferenceLine 
                     y={thresholds.step_up_threshold} 
                     label={{ position: 'right', value: 'Extra Verification Limit', fill: '#f59e0b', fontSize: 10 }} 
                     stroke="#f59e0b" 
-                    strokeDasharray="3 3" 
+                    strokeDasharray="3 3"
+                    strokeWidth={1.5}
                   />
                 </LineChart>
               </ResponsiveContainer>
             </div>
           </motion.div>
 
-          {/* Distribution Bar Chart */}
+          {/* Chart 2: Security Decision Breakdown */}
           <motion.div
             className="section-card"
             initial={{ opacity: 0, x: 20 }}
@@ -463,10 +362,10 @@ const Dashboard: React.FC = () => {
           >
             <div className="mb-6">
               <h2 className="text-lg font-bold text-foreground">
-                Transaction Outcomes
+                Security Decision Breakdown
               </h2>
               <p className="text-sm text-muted-foreground">
-                Breakdown of security decisions across all processed payments
+                Distribution of AI-driven security outcomes across all processed transactions
               </p>
             </div>
             <div className="h-[300px] w-full">
@@ -481,10 +380,11 @@ const Dashboard: React.FC = () => {
                   <YAxis
                     dataKey="name"
                     type="category"
+                    width={90}
                     axisLine={false}
                     tickLine={false}
                     tick={{
-                      fontSize: 14,
+                      fontSize: 13,
                       fontWeight: 500,
                       fill: "hsl(var(--foreground))",
                     }}
@@ -498,6 +398,7 @@ const Dashboard: React.FC = () => {
                     }}
                   />
                   <Bar dataKey="count" radius={[0, 4, 4, 0]} barSize={40}>
+                    <LabelList dataKey="count" position="right" style={{ fill: "hsl(var(--foreground))", fontSize: 13, fontWeight: 600 }} />
                     {distributionData.map((entry, index) => (
                       <Cell
                         key={`cell-${index}`}
@@ -508,12 +409,24 @@ const Dashboard: React.FC = () => {
                 </BarChart>
               </ResponsiveContainer>
             </div>
+            {/* Colour Legend */}
+            <div className="flex gap-4 mt-3 justify-center text-xs font-medium">
+              <span className="flex items-center gap-1.5">
+                <span className="w-3 h-3 rounded-sm bg-[#0f766e] inline-block" /> Approved
+              </span>
+              <span className="flex items-center gap-1.5">
+                <span className="w-3 h-3 rounded-sm bg-[#ef4444] inline-block" /> Blocked
+              </span>
+              <span className="flex items-center gap-1.5">
+                <span className="w-3 h-3 rounded-sm bg-[#f59e0b] inline-block" /> Cancelled
+              </span>
+            </div>
           </motion.div>
         </div>
 
-        {/* Risk Heatmap + XAI Factors */}
+        {/* ─── Scatter + XAI Factors ──────────────────────────────────────── */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-          {/* Risk Heatmap Scatter Chart */}
+          {/* Chart 3: Transaction Risk Profile */}
           <motion.div
             className="section-card"
             initial={{ opacity: 0, y: 20 }}
@@ -523,10 +436,10 @@ const Dashboard: React.FC = () => {
             <div className="mb-6">
               <h2 className="text-lg font-bold text-foreground flex items-center gap-2">
                 <TrendingUp className="w-5 h-5 text-primary" />
-                Payment Amount vs. Risk Level
+                Transaction Risk Profile
               </h2>
               <p className="text-sm text-muted-foreground">
-                Each dot represents one payment — higher and to the right means more suspicious
+                Each point represents a transaction — colour indicates the AI security decision
               </p>
             </div>
             <div className="h-[280px] w-full">
@@ -569,19 +482,37 @@ const Dashboard: React.FC = () => {
                     strokeDasharray="5 5"
                     label={{ value: 'Auto-Block Limit', position: 'right', fill: '#ef4444', fontSize: 10 }}
                   />
-                  <Scatter name="Transactions" data={liveData} isAnimationActive={false}>
-                    {liveData.map((entry, index) => {
-                      let dotColor = "#0f766e"; // Green - low risk
+                  <ReferenceLine 
+                    y={thresholds.step_up_threshold} 
+                    stroke="#f59e0b" 
+                    strokeDasharray="5 5"
+                    label={{ value: 'Step-Up Threshold', position: 'right', fill: '#f59e0b', fontSize: 10 }}
+                  />
+                  <Scatter name="Transactions" data={chartData} isAnimationActive={false}>
+                    {chartData.map((entry, index) => {
+                      let dotColor = "#0f766e";
                       if (entry.risk >= thresholds.block_threshold) {
-                        dotColor = "#ef4444"; // Red - high risk
+                        dotColor = "#ef4444";
                       } else if (entry.risk >= thresholds.step_up_threshold) {
-                        dotColor = "#f59e0b"; // Amber - medium risk
+                        dotColor = "#f59e0b";
                       }
                       return <Cell key={`cell-${index}`} fill={dotColor} />;
                     })}
                   </Scatter>
                 </ScatterChart>
               </ResponsiveContainer>
+            </div>
+            {/* Scatter Legend */}
+            <div className="flex gap-4 mt-3 justify-center text-xs font-medium">
+              <span className="flex items-center gap-1.5">
+                <span className="w-3 h-3 rounded-full bg-[#0f766e] inline-block" /> Low Risk
+              </span>
+              <span className="flex items-center gap-1.5">
+                <span className="w-3 h-3 rounded-full bg-[#f59e0b] inline-block" /> Medium Risk
+              </span>
+              <span className="flex items-center gap-1.5">
+                <span className="w-3 h-3 rounded-full bg-[#ef4444] inline-block" /> High Risk
+              </span>
             </div>
           </motion.div>
 
@@ -597,7 +528,7 @@ const Dashboard: React.FC = () => {
                 Security Decision Factors
               </h2>
               <p className="text-sm text-muted-foreground">
-                Natural Language Explanation of the most recent activity
+                Natural language explanation of the most recent activity
               </p>
             </div>
 
@@ -638,14 +569,67 @@ const Dashboard: React.FC = () => {
                   animate={{ opacity: 1 }}
                   className="text-sm text-muted-foreground text-center py-12"
                 >
-                  {isSimulating
-                    ? "Waiting for activity..."
-                    : "Activate the stream to see real-time security analysis"}
+                  No transaction data available. Process transactions to see security analysis.
                 </motion.p>
               )}
             </AnimatePresence>
           </motion.div>
         </div>
+
+        {/* ─── Chart 4: Fraud Probability Distribution (Histogram) ────────── */}
+        <motion.div
+          className="section-card"
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.5, delay: 0.6 }}
+        >
+          <div className="mb-6">
+            <h2 className="text-lg font-bold text-foreground flex items-center gap-2">
+              <Activity className="w-5 h-5 text-primary" />
+              Fraud Probability Distribution
+            </h2>
+            <p className="text-sm text-muted-foreground">
+              Frequency of transactions at each ML risk score bracket
+            </p>
+          </div>
+          <div className="h-[300px] w-full">
+            <ResponsiveContainer>
+              <BarChart data={histogramData}>
+                <CartesianGrid
+                  strokeDasharray="3 3"
+                  vertical={false}
+                  stroke="hsl(var(--border))"
+                />
+                <XAxis
+                  dataKey="range"
+                  tick={{ fontSize: 11, fill: "hsl(var(--muted-foreground))" }}
+                />
+                <YAxis
+                  tick={{ fontSize: 12, fill: "hsl(var(--muted-foreground))" }}
+                  allowDecimals={false}
+                />
+                <Tooltip
+                  contentStyle={{
+                    borderRadius: "8px",
+                    border: "1px solid hsl(var(--border))",
+                    backgroundColor: "hsl(var(--card))",
+                  }}
+                  formatter={(value: number) => [value, "Transactions"]}
+                />
+                <Bar dataKey="count" radius={[4, 4, 0, 0]} barSize={30}>
+                  <LabelList dataKey="count" position="top" style={{ fill: "hsl(var(--foreground))", fontSize: 11, fontWeight: 600 }} />
+                  {histogramData.map((entry, index) => {
+                    // Green 0–40%, Amber 40–70%, Red 70–100%
+                    let color = "#0f766e";
+                    if (index >= 7) color = "#ef4444";
+                    else if (index >= 4) color = "#f59e0b";
+                    return <Cell key={`hist-${index}`} fill={color} />;
+                  })}
+                </Bar>
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+        </motion.div>
       </div>
     </Layout>
   );

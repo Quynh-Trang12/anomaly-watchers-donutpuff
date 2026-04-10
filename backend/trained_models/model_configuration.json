@@ -9,8 +9,6 @@
         "step_up_threshold": 0.10
     },
     "business_rules": {
-        "large_transfer_limit_amount": 150000.0,
-        "daily_velocity_limit": 500000.0,
         "restricted_flagged_status": true
     }
 }

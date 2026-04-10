@@ -17,6 +17,9 @@ export function Footer() {
             <Link to="/simulate" className="hover:text-foreground transition-colors">
               Simulator
             </Link>
+            <Link to="/about" className="hover:text-foreground transition-colors">
+              About
+            </Link>
             <Link to="/admin" className="hover:text-foreground transition-colors">
               Admin
             </Link>
