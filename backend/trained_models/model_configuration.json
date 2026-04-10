@@ -1,14 +1,14 @@
 {
-    "model_metadata": {
-        "model_version": "2.0.0",
-        "optimization_date": "2026-04-08",
-        "validation_sample_size": 200000
-    },
     "ml_thresholds": {
-        "block_threshold": 0.5129564462269716,
-        "step_up_threshold": 0.10
+        "block_threshold": 0.5130,
+        "step_up_threshold": 0.1000
     },
     "business_rules": {
         "restricted_flagged_status": true
+    },
+    "security_thresholds": {
+        "max_failed_otp_attempts": 3,
+        "max_consecutive_cancellations": 3,
+        "observation_window_minutes": 10
     }
 }

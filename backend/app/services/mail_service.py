@@ -84,7 +84,7 @@ async def send_security_alert_email(recipient_email: str, otp_code: str, transac
         logger.warning(f"OOB_AUTH_FALLBACK_DELIVERY: [OTP_CODE: {otp_code}] [RECIPIENT: {recipient_email}]")
         print(
             f"\n{'='*50}\n"
-            f"  OOB SECURITY CODE — CHECK THIS TO TEST STEP-UP\n"
+            f"  OOB SECURITY CODE — COPY THIS TO TEST STEP-UP\n"
             f"  Recipient : {recipient_email}\n"
             f"  OTP Code  : {otp_code}\n"
             f"{'='*50}\n"

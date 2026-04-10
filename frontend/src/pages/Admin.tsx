@@ -35,11 +35,14 @@ import {
   User,
   Lock,
   Unlock,
+  RefreshCw,
+  Zap
 } from "lucide-react";
 import { toast } from "sonner";
-import { useAuth } from "@/context/AuthContext";
+import { useAuth, MOCK_USERS } from "@/context/AuthContext";
 import { Navigate } from "react-router-dom";
 import { formatCurrencyToUSD } from "@/lib/utils";
+import { motion, AnimatePresence } from "framer-motion";
 
 export default function Admin() {
   const { isAdmin, userId } = useAuth();
@@ -48,25 +51,19 @@ export default function Admin() {
   const [auditLogs, setAuditLogs] = useState<AuditLogEntry[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
-  // ─── Account Security State ───────────────────────────────────────────────
+  // Account Security State
   const [frozenAccounts, setFrozenAccounts] = useState<FrozenAccountEntry[]>([]);
-  const [freezeConfigState, setFreezeConfigState] = useState<FreezeConfig>({
+  const [freezeCfg, setFreezeCfg] = useState<FreezeConfig>({
     max_failed_otp_attempts: 3,
     observation_window_minutes: 10,
   });
 
-  useEffect(() => {
-    if (isAdmin) {
-      loadData();
-    }
-  }, [isAdmin]);
-
   const loadData = async () => {
     setIsLoading(true);
     try {
-      const [configData, transData, logsData, frozenData, freezeCfg] = await Promise.all([
+      const [configData, transData, logsData, frozenData, fCfg] = await Promise.all([
         getConfiguration(),
-        getAllTransactionsAdmin("admin_1"),
+        getAllTransactionsAdmin(userId || "admin_1"),
         getAuditLogs(),
         getFrozenAccounts(),
         getFreezeConfig(),
@@ -75,436 +72,288 @@ export default function Admin() {
       setTransactions(transData);
       setAuditLogs(logsData);
       setFrozenAccounts(frozenData);
-      setFreezeConfigState(freezeCfg);
+      setFreezeCfg(fCfg);
     } catch (error) {
-      toast.error("Failed to load admin data");
+      toast.error("Failed to synchronize administrative data.");
     } finally {
       setIsLoading(false);
     }
   };
 
+  useEffect(() => {
+    if (isAdmin) loadData();
+  }, [isAdmin]);
+
   const handleSaveConfig = async () => {
     if (!config) return;
     try {
       await updateConfiguration(config);
-      toast.success("Configuration updated successfully");
-      const logs = await getAuditLogs();
-      setAuditLogs(logs);
+      toast.success("Heuristic business rules updated and deployed.");
+      loadData();
     } catch (error) {
-      toast.error("Failed to update configuration");
+      toast.error("Configuration deployment failed.");
     }
   };
 
   const handleTransactionAction = async (id: string, action: "approve" | "block") => {
     try {
-      await updateTransactionStatus(id, action);
-      toast.success(`Transaction ${action}d`);
-      loadData(); // Refresh logs and transactions
+      await updateTransactionStatus(id, action, userId || "admin_1");
+      toast.success(`Transaction manually overridden: ${action.toUpperCase()}`);
+      loadData();
     } catch (error) {
-      toast.error("Failed to perform action");
+      toast.error("Manual override rejected by system.");
     }
   };
 
-  // ─── Account Security Handlers ────────────────────────────────────────────
-  const handleUnfreeze = async (accountUserId: string) => {
+  const handleUnfreeze = async (accId: string) => {
     try {
-      await unfreezeAccount(accountUserId);
-      toast.success(`Account ${accountUserId} unfrozen.`);
-      const updated = await getFrozenAccounts();
-      setFrozenAccounts(updated);
-      const logs = await getAuditLogs();
-      setAuditLogs(logs);
+      await unfreezeAccount(accId, userId || "admin_1");
+      toast.success(`Security hold removed for ${accId}`);
+      loadData();
     } catch (error) {
-      toast.error("Failed to unfreeze account.");
+      toast.error("Unfreeze operation failed.");
     }
   };
 
-  const handleSaveFreezeConfig = async () => {
+  const handleSaveFreezeCfg = async () => {
     try {
-      await updateFreezeConfig(freezeConfigState);
-      toast.success("Freeze configuration updated.");
-      const logs = await getAuditLogs();
-      setAuditLogs(logs);
+      await updateFreezeConfig(freezeCfg, userId || "admin_1");
+      toast.success("Security thresholds updated and synchronized.");
+      loadData();
     } catch (error) {
-      toast.error("Failed to update freeze configuration.");
+      toast.error("Threshold update failed.");
     }
   };
 
-  const pendingReview = useMemo(() => 
-    transactions.filter(t => t.status === "PENDING_ADMIN_REVIEW"), 
-  [transactions]);
-
-  useEffect(() => {
-    if (pendingReview.length > 10) {
-      notifyAdminQueueOverflow(pendingReview.length).catch(error => {
-        console.error("Failed to notify admin of queue overflow:", error);
-      });
-    }
-  }, [pendingReview.length]);
-
-  if (!isAdmin) {
-    return <Navigate to="/" replace />;
-  }
+  if (!isAdmin) return <Navigate to="/" replace />;
 
   return (
     <Layout>
-      <div className="container py-8 max-w-7xl">
-        <header className="mb-8 p-6 bg-card border rounded-2xl shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4">
-          <div>
-            <h1 className="text-3xl font-bold tracking-tight">Admin Control Center</h1>
-            <p className="text-muted-foreground mt-1">Enterprise fraud oversight and system orchestration.</p>
+      <div className="container py-12 max-w-7xl">
+        <header className="mb-10 p-8 bg-card border rounded-[2rem] shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-6 relative overflow-hidden">
+          <div className="absolute right-0 top-0 opacity-5 pointer-events-none">
+            <Zap className="h-64 w-64 text-primary" />
           </div>
-          <div className="flex items-center gap-3">
-            <Button variant="outline" onClick={loadData} className="gap-2">
-              <Activity className="h-4 w-4" />
-              Refresh Data
-            </Button>
+          <div className="relative z-10">
+            <div className="bg-primary/10 text-primary px-3 py-1 rounded-full inline-flex items-center gap-2 text-[10px] font-black uppercase tracking-widest mb-4">
+              <Shield className="h-3 w-3" /> System Orchestrator
+            </div>
+            <h1 className="text-4xl font-black tracking-tight">Enterprise Control Center</h1>
+            <p className="text-muted-foreground font-medium mt-1">Manage global heuristic rules, security thresholds, and manual overrides.</p>
           </div>
+          <Button onClick={loadData} variant="outline" className="h-12 rounded-xl gap-2 font-black border-2 transition-all hover:bg-muted relative z-10">
+            <RefreshCw className={`h-4 w-4 ${isLoading ? 'animate-spin' : ''}`} /> Sync Data
+          </Button>
         </header>
 
-        <Tabs defaultValue="review" className="space-y-6">
-          <TabsList className="bg-muted p-1 rounded-xl">
-            <TabsTrigger value="review" className="gap-2 rounded-lg">
-              <ClipboardCheck className="h-4 w-4" />
-              Review Queue
-              {pendingReview.length > 0 && (
-                <span className="bg-primary text-primary-foreground px-2 py-0.5 rounded-full text-xs font-bold">
-                  {pendingReview.length}
-                </span>
-              )}
+        <Tabs defaultValue="security" className="space-y-8">
+          <TabsList className="bg-muted/50 p-1.5 rounded-2xl h-16 w-full sm:w-auto shadow-inner flex overflow-x-auto no-scrollbar">
+            <TabsTrigger value="security" className="gap-2 rounded-xl font-black px-6 data-[state=active]:shadow-lg">
+              <Lock className="h-4 w-4" /> Account Security
             </TabsTrigger>
-            <TabsTrigger value="traffic" className="gap-2 rounded-lg">
-              <Activity className="h-4 w-4" />
-              Global Traffic
+            <TabsTrigger value="config" className="gap-2 rounded-xl font-black px-6 data-[state=active]:shadow-lg">
+              <Settings className="h-4 w-4" /> Rule Tuning
             </TabsTrigger>
-            <TabsTrigger value="config" className="gap-2 rounded-lg">
-              <Settings className="h-4 w-4" />
-              System Config
-            </TabsTrigger>
-            <TabsTrigger value="security" className="gap-2 rounded-lg">
-              <Lock className="h-4 w-4" />
-              Account Security
-            </TabsTrigger>
-            <TabsTrigger value="audit" className="gap-2 rounded-lg">
-              <History className="h-4 w-4" />
-              Audit Logs
+            <TabsTrigger value="audit" className="gap-2 rounded-xl font-black px-6 data-[state=active]:shadow-lg">
+              <History className="h-4 w-4" /> Audit Trailing
             </TabsTrigger>
           </TabsList>
 
-          {/* Pending Review Queue */}
-          <TabsContent value="review" className="space-y-4">
-            {pendingReview.length === 0 ? (
-              <div className="p-12 text-center border-2 border-dashed rounded-3xl bg-muted/20">
-                <CheckCircle2 className="h-12 w-12 text-success mx-auto mb-4 opacity-20" />
-                <p className="text-muted-foreground font-medium">Clear Queue. No transactions pending review.</p>
-              </div>
-            ) : (
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                {pendingReview.map(t => (
-                  <div key={t.transaction_id} className="bg-card border rounded-2xl p-6 shadow-sm hover:shadow-md transition-shadow">
-                    <div className="flex justify-between items-start mb-4">
-                      <div>
-                        <span className="text-xs font-bold text-muted-foreground tracking-wider uppercase">{t.transaction_id}</span>
-                        <h3 className="text-xl font-bold mt-1">{formatCurrencyToUSD(t.amount)}</h3>
-                      </div>
-                      <div className="bg-warning-muted text-warning px-3 py-1 rounded-full text-xs font-bold">
-                        REVIEW REQ
-                      </div>
-                    </div>
-                    <div className="space-y-3 mb-6">
-                      <div className="flex justify-between text-sm">
-                        <span className="text-muted-foreground">User ID:</span>
-                        <span className="font-mono font-medium">{t.owner_user_id}</span>
-                      </div>
-                      <div className="flex justify-between text-sm">
-                        <span className="text-muted-foreground">Type:</span>
-                        <span className="font-medium">{t.type}</span>
-                      </div>
-                      <div className="flex justify-between text-sm">
-                        <span className="text-muted-foreground">ML Prob:</span>
-                        <span className="font-medium text-danger">{(t.probability_score * 100).toFixed(1)}%</span>
-                      </div>
-                    </div>
-                    <div className="flex gap-3">
-                      <Button 
-                        className="flex-1 bg-success hover:bg-success/90 text-white gap-2"
-                        onClick={() => handleTransactionAction(t.transaction_id, "approve")}
-                      >
-                        <CheckCircle2 className="h-4 w-4" /> Approve
-                      </Button>
-                      <Button 
-                        variant="destructive" 
-                        className="flex-1 gap-2"
-                        onClick={() => handleTransactionAction(t.transaction_id, "block")}
-                      >
-                        <XCircle className="h-4 w-4" /> Block
-                      </Button>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </TabsContent>
-
-          {/* Global Traffic */}
-          <TabsContent value="traffic">
-            <div className="bg-card border rounded-2xl overflow-hidden shadow-sm">
-              <div className="p-6 border-b bg-muted/30">
-                <h3 className="font-bold flex items-center gap-2">
-                  <Activity className="h-5 w-5 text-primary" />
-                  Real-time Transaction Stream
-                </h3>
-              </div>
-              <div className="overflow-x-auto">
-                <table className="w-full text-left border-collapse">
-                  <thead className="bg-muted/50 text-xs font-bold uppercase tracking-wider text-muted-foreground">
-                    <tr>
-                      <th className="px-6 py-4">Timestamp</th>
-                      <th className="px-6 py-4">Transaction ID</th>
-                      <th className="px-6 py-4">User</th>
-                      <th className="px-6 py-4">Amount</th>
-                      <th className="px-6 py-4">Status</th>
-                      <th className="px-6 py-4">ML Score</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y text-sm">
-                    {transactions.slice().reverse().map(t => (
-                      <tr key={t.transaction_id} className="hover:bg-muted/30 transition-colors">
-                        <td className="px-6 py-4 text-muted-foreground">
-                          {new Date(t.timestamp).toLocaleTimeString()}
-                        </td>
-                        <td className="px-6 py-4 font-mono font-medium">{t.transaction_id}</td>
-                        <td className="px-6 py-4">{t.owner_user_id}</td>
-                        <td className="px-6 py-4 font-bold">{formatCurrencyToUSD(t.amount)}</td>
-                        <td className="px-6 py-4">
-                          <span className={`px-2 py-1 rounded-full text-[10px] font-bold uppercase ${
-                            t.status === 'APPROVED' ? 'bg-success-muted text-success' :
-                            t.status === 'BLOCKED' ? 'bg-danger-muted text-danger' :
-                            'bg-warning-muted text-warning'
-                          }`}>
-                            {t.status.replace(/_/g, ' ')}
-                          </span>
-                        </td>
-                        <td className="px-6 py-4">
-                          <div className="flex items-center gap-2">
-                            <div className="flex-1 bg-muted h-1.5 w-16 rounded-full overflow-hidden">
-                              <div 
-                                className={`h-full ${t.probability_score > 0.7 ? 'bg-danger' : t.probability_score > 0.4 ? 'bg-warning' : 'bg-success'}`}
-                                style={{ width: `${t.probability_score * 100}%` }}
-                              />
-                            </div>
-                            <span className="font-medium">{(t.probability_score * 100).toFixed(0)}%</span>
-                          </div>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          </TabsContent>
-
-          {/* ─── Configuration Editor ──────────────────────────────────────── */}
-          <TabsContent value="config">
+          {/* ─── Account Security Tab ─────────────────────────────────────── */}
+          <TabsContent value="security" className="space-y-8">
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-              <div className="bg-card border rounded-2xl p-8 shadow-sm">
-                <div className="flex items-center gap-3 mb-6">
-                  <div className="p-2 bg-primary/10 rounded-lg text-primary">
-                    <Settings className="h-6 w-6" />
+              <div className="bg-card border rounded-[2.5rem] p-8 shadow-sm">
+                <div className="flex items-center gap-3 mb-8">
+                  <div className="p-3 bg-danger/10 text-danger rounded-2xl">
+                    <Lock className="h-6 w-6" />
                   </div>
                   <div>
-                    <h3 className="text-xl font-bold">Business Parameters</h3>
-                    <p className="text-sm text-muted-foreground">Adjust limits and flags in real-time.</p>
+                    <h3 className="text-xl font-black tracking-tight">Frozen Account Registry</h3>
+                    <p className="text-sm text-muted-foreground font-medium">Suspend/Unsuspend suspicious customer profiles.</p>
                   </div>
                 </div>
 
-                {config && (
-                  <div className="space-y-6">
-                    <div className="pt-4 border-t">
-                      <h4 className="text-sm font-bold uppercase tracking-wider text-primary mb-4">Autonomous AI Safeguards</h4>
-                      <div className="space-y-4">
-                        <div className="flex justify-between items-center bg-muted/30 p-4 rounded-xl">
-                          <div className="space-y-0.5">
-                            <Label>Minimum AI Confidence Score to Auto-Block</Label>
-                            <p className="text-xs text-muted-foreground">Threshold for automatic intervention.</p>
-                          </div>
-                          <span className="font-mono font-bold bg-danger/10 text-danger px-3 py-1 rounded-lg">51.3%</span>
-                        </div>
-                      </div>
-                    </div>
-
-                    <div className="flex items-center justify-between p-4 bg-muted/20 border-2 border-dashed rounded-xl">
-                      <div className="space-y-0.5">
-                        <Label>Strict Rule Enforcement</Label>
-                        <p className="text-xs text-muted-foreground">Automatically block all historically high-risk patterns.</p>
-                      </div>
-                      <Switch 
-                        checked={config.restricted_flagged_status}
-                        onCheckedChange={checked => setConfig({...config, restricted_flagged_status: checked})}
-                      />
-                    </div>
-
-                    <Button onClick={handleSaveConfig} className="w-full h-14 rounded-2xl text-lg font-bold gap-3 shadow-lg shadow-primary/20 transition-all hover:scale-[1.01]">
-                      <Save className="h-5 w-5" />
-                      Deploy System Configuration
-                    </Button>
-                  </div>
-                )}
-              </div>
-
-              <div className="bg-primary/5 border border-primary/20 rounded-2xl p-8 flex flex-col justify-center">
-                <Shield className="h-16 w-16 text-primary mb-6 mx-auto opacity-20" />
-                <h4 className="text-lg font-bold text-center mb-2">Architectural Safety</h4>
-                <p className="text-center text-muted-foreground text-sm max-w-sm mx-auto">
-                  Updating these parameters will immediately overwrite the <code className="bg-primary/10 px-1 rounded">model_configuration.json</code> on the backend. ML thresholds can only be modified via the automated generation script.
-                </p>
-              </div>
-            </div>
-          </TabsContent>
-
-          {/* ─── Account Security Tab ─────────────────────────────────────── */}
-          <TabsContent value="security" className="space-y-6">
-            {/* Frozen Accounts List */}
-            <div className="bg-card border rounded-2xl shadow-sm">
-              <div className="p-6 border-b bg-muted/30">
-                <h3 className="font-bold flex items-center gap-2">
-                  <Lock className="h-5 w-5 text-danger" />
-                  Frozen Accounts
-                </h3>
-                <p className="text-sm text-muted-foreground mt-1">Accounts temporarily suspended due to suspicious activity.</p>
-              </div>
-              <div className="p-4">
                 {frozenAccounts.length === 0 ? (
-                  <div className="p-8 text-center">
-                    <CheckCircle2 className="h-10 w-10 text-success mx-auto mb-3 opacity-20" />
-                    <p className="text-muted-foreground font-medium">No frozen accounts. All accounts are active.</p>
+                  <div className="p-16 text-center border-2 border-dashed rounded-3xl bg-muted/10 items-center justify-center flex flex-col">
+                    <CheckCircle2 className="h-16 w-16 text-success opacity-10 mb-4" />
+                    <p className="text-muted-foreground font-black uppercase text-xs tracking-widest">Global Green Status</p>
+                    <p className="text-[10px] text-muted-foreground mt-1">All accounts are currently active and unrestricted.</p>
                   </div>
                 ) : (
                   <div className="space-y-3">
-                    {frozenAccounts.map((account) => (
-                      <div key={account.user_id} className="flex items-center justify-between p-4 rounded-xl bg-danger/5 border border-danger/10">
+                    {frozenAccounts.map((acc) => (
+                      <motion.div 
+                        layout 
+                        key={acc.user_id} 
+                        className="flex items-center justify-between p-5 rounded-2xl bg-danger/5 border border-danger/10 group hover:shadow-md transition-all"
+                      >
                         <div className="flex items-center gap-4">
-                          <div className="p-2 bg-danger/10 rounded-lg">
+                          <div className="p-3 bg-danger/10 rounded-xl group-hover:scale-110 transition-transform">
                             <Lock className="h-5 w-5 text-danger" />
                           </div>
                           <div>
-                            <p className="font-bold text-sm">{account.user_id}</p>
-                            <p className="text-xs text-muted-foreground">{account.reason}</p>
-                            <p className="text-[10px] text-muted-foreground font-mono mt-0.5">
-                              Frozen: {new Date(account.frozen_at).toLocaleString()}
+                            <p className="font-black text-lg leading-tight">{acc.user_id}</p>
+                            <p className="text-xs text-danger font-bold uppercase tracking-tight">{acc.reason}</p>
+                            <p className="text-[10px] text-muted-foreground font-mono mt-1">
+                              Time: {new Date(acc.frozen_at).toLocaleString()}
                             </p>
                           </div>
                         </div>
                         <Button
                           variant="outline"
                           size="sm"
-                          className="gap-2"
-                          onClick={() => handleUnfreeze(account.user_id)}
+                          className="gap-2 rounded-xl h-10 px-4 font-black border-2"
+                          onClick={() => handleUnfreeze(acc.user_id)}
                         >
-                          <Unlock className="h-4 w-4" />
-                          Unfreeze
+                          <Unlock className="h-4 w-4" /> REINSTATE
                         </Button>
-                      </div>
+                      </motion.div>
                     ))}
                   </div>
                 )}
               </div>
-            </div>
 
-            {/* Freeze Configuration */}
-            <div className="bg-card border rounded-2xl p-8 shadow-sm">
-              <div className="flex items-center gap-3 mb-6">
-                <div className="p-2 bg-primary/10 rounded-lg text-primary">
-                  <Shield className="h-6 w-6" />
+              <div className="bg-card border rounded-[2.5rem] p-8 shadow-sm">
+                <div className="flex items-center gap-3 mb-8">
+                  <div className="p-3 bg-primary/10 text-primary rounded-2xl">
+                    <Settings className="h-6 w-6" />
+                  </div>
+                  <div>
+                    <h3 className="text-xl font-black tracking-tight">Security Threshold Tuning</h3>
+                    <p className="text-sm text-muted-foreground font-medium">Define automated account lockdown parameters.</p>
+                  </div>
                 </div>
-                <div>
-                  <h3 className="text-xl font-bold">Freeze Configuration</h3>
-                  <p className="text-sm text-muted-foreground">Thresholds for automatic account freezing.</p>
+                <div className="space-y-8">
+                  <div className="space-y-3">
+                    <Label className="text-xs font-black uppercase tracking-widest text-muted-foreground flex justify-between">
+                      OTP Violation Limit
+                      <span className="text-primary font-mono">{freezeCfg.max_failed_otp_attempts} ATTEMPTS</span>
+                    </Label>
+                    <Input
+                      type="number"
+                      min={1}
+                      max={20}
+                      value={freezeCfg.max_failed_otp_attempts}
+                      className="h-14 rounded-2xl font-black bg-muted/30 text-xl"
+                      onChange={(e) => setFreezeCfg({ ...freezeCfg, max_failed_otp_attempts: parseInt(e.target.value) || 1 })}
+                    />
+                  </div>
+                  <div className="space-y-3">
+                    <Label className="text-xs font-black uppercase tracking-widest text-muted-foreground flex justify-between">
+                      Violation Window (Min)
+                      <span className="text-primary font-mono">{freezeCfg.observation_window_minutes} MINUTES</span>
+                    </Label>
+                    <Input
+                      type="number"
+                      min={1}
+                      max={60}
+                      value={freezeCfg.observation_window_minutes}
+                      className="h-14 rounded-2xl font-black bg-muted/30 text-xl"
+                      onChange={(e) => setFreezeCfg({ ...freezeCfg, observation_window_minutes: parseInt(e.target.value) || 1 })}
+                    />
+                  </div>
+                  <Button onClick={handleSaveFreezeCfg} className="w-full h-16 rounded-2xl text-lg font-black gap-3 shadow-xl transition-all hover:scale-[1.01] active:scale-[0.98]">
+                    <Save className="h-5 w-5" /> SYNC THRESHOLDS
+                  </Button>
                 </div>
-              </div>
-              <div className="space-y-6">
-                <div className="space-y-2">
-                  <Label htmlFor="max-otp-attempts">Max Failed OTP Attempts</Label>
-                  <Input
-                    id="max-otp-attempts"
-                    type="number"
-                    min={1}
-                    max={20}
-                    value={freezeConfigState.max_failed_otp_attempts}
-                    className="font-mono h-12 rounded-xl"
-                    onChange={(e) =>
-                      setFreezeConfigState({
-                        ...freezeConfigState,
-                        max_failed_otp_attempts: Math.max(1, Math.min(20, parseInt(e.target.value) || 1)),
-                      })
-                    }
-                  />
-                  <p className="text-xs text-muted-foreground italic">
-                    Number of failed OTP attempts before the account is automatically frozen (1–20).
-                  </p>
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="obs-window">Observation Window (minutes)</Label>
-                  <Input
-                    id="obs-window"
-                    type="number"
-                    min={1}
-                    max={60}
-                    value={freezeConfigState.observation_window_minutes}
-                    className="font-mono h-12 rounded-xl"
-                    onChange={(e) =>
-                      setFreezeConfigState({
-                        ...freezeConfigState,
-                        observation_window_minutes: Math.max(1, Math.min(60, parseInt(e.target.value) || 1)),
-                      })
-                    }
-                  />
-                  <p className="text-xs text-muted-foreground italic">
-                    Time window for counting failed OTP attempts (1–60 minutes).
-                  </p>
-                </div>
-                <Button onClick={handleSaveFreezeConfig} className="w-full h-14 rounded-2xl text-lg font-bold gap-3 shadow-lg shadow-primary/20 transition-all hover:scale-[1.01]">
-                  <Save className="h-5 w-5" />
-                  Save Freeze Configuration
-                </Button>
               </div>
             </div>
           </TabsContent>
 
-          {/* Audit Logs */}
-          <TabsContent value="audit">
-            <div className="bg-card border rounded-2xl shadow-sm">
-                <div className="p-6 border-b bg-muted/30 flex justify-between items-center">
-                  <h3 className="font-bold flex items-center gap-2">
-                    <History className="h-5 w-5 text-primary" />
-                    Administrative Event Log
-                  </h3>
+
+          {/* ─── Rule Tuning Tab (Config) ─────────────────────────────────── */}
+          <TabsContent value="config">
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+              <div className="bg-card border rounded-[2.5rem] p-8 shadow-sm">
+                <div className="flex items-center gap-3 mb-8">
+                  <div className="p-3 bg-primary/10 text-primary rounded-2xl">
+                    <Zap className="h-6 w-6" />
+                  </div>
+                  <div>
+                    <h3 className="text-xl font-black tracking-tight">Heuristic Decision Matrix</h3>
+                    <p className="text-sm text-muted-foreground font-medium">Adjust non-ML overrides and global flags.</p>
+                  </div>
                 </div>
-                <div className="space-y-1 p-4">
-                  {auditLogs.slice().reverse().map(log => (
-                    <div key={log.log_id} className="p-4 rounded-xl bg-muted/30 hover:bg-muted/50 transition-colors flex gap-4">
-                      <div className="shrink-0 mt-1">
-                        {log.action_type === 'CONFIG_UPDATE' ? (
-                          <Settings className="h-4 w-4 text-primary" />
-                        ) : log.action_type === 'STATUS_OVERRIDE' ? (
-                          <AlertTriangle className="h-4 w-4 text-warning" />
-                        ) : (
-                          <Shield className="h-4 w-4 text-muted-foreground" />
-                        )}
+
+                {config && (
+                  <div className="space-y-8">
+                    <div className="p-6 rounded-2xl bg-muted/30 border border-dashed relative overflow-hidden">
+                      <div className="absolute right-0 top-0 p-4 opacity-5">
+                        <Activity className="h-16 w-16" />
                       </div>
-                      <div className="flex-1">
-                        <div className="flex justify-between items-start">
-                          <span className="text-xs font-bold uppercase tracking-tight text-primary/80">{log.action_type}</span>
-                          <span className="text-[10px] text-muted-foreground font-mono">{new Date(log.timestamp).toLocaleString()}</span>
+                      <div className="relative z-10">
+                        <div className="flex justify-between items-center mb-6">
+                        <div className="space-y-0.5">
+                          <Label className="text-lg font-black">Strict Pattern Validation</Label>
+                          <p className="text-xs text-muted-foreground font-bold">Automatically block 100% of historically toxic patterns.</p>
                         </div>
-                        <p className="text-sm font-medium mt-1">{log.details}</p>
-                        <div className="text-[11px] text-muted-foreground mt-2 flex items-center gap-1">
-                          <User className="h-3 w-3" /> Operated by: <span className="font-bold text-foreground/80">{log.admin_id}</span>
-                        </div>
+                        <Switch 
+                          className="scale-125 data-[state=checked]:bg-primary"
+                          checked={config.restricted_flagged_status}
+                          onCheckedChange={v => setConfig({...config, restricted_flagged_status: v})}
+                        />
+                      </div>
+                      <div className="h-2 w-full bg-muted rounded-full overflow-hidden">
+                        <div className={`h-full transition-all duration-1000 ${config.restricted_flagged_status ? 'w-full bg-primary' : 'w-1/3 bg-muted-foreground/30'}`} />
+                      </div>
+                      <p className="text-[10px] font-black uppercase tracking-widest mt-4 text-muted-foreground">System Security Level: <span className={config.restricted_flagged_status ? 'text-primary' : 'text-warning'}>{config.restricted_flagged_status ? 'HIGH ENFORCEMENT' : 'ADAPTIVE'}</span></p>
                       </div>
                     </div>
-                  ))}
+
+                    <Button onClick={handleSaveConfig} className="w-full h-16 rounded-2xl text-lg font-black gap-3 shadow-xl transition-all hover:scale-[1.01] active:scale-[0.98]">
+                      <Save className="h-5 w-5" /> SYNC BUSINESS RULES
+                    </Button>
+                  </div>
+                )}
+              </div>
+
+              <div className="flex flex-col gap-6">
+                 <div className="bg-primary/5 border-2 border-dashed border-primary/20 rounded-[2.5rem] p-10 flex flex-col items-center justify-center flex-1 text-center">
+                    <Shield className="h-20 w-20 text-primary opacity-20 mb-6" />
+                    <h4 className="text-2xl font-black mb-2 tracking-tight">Autonomous Calibration</h4>
+                    <p className="text-muted-foreground font-medium text-sm leading-relaxed max-w-xs">
+                      The Donutpuff system uses a hybrid model of ML scoring and heuristic rule sets. These parameters calibrate the out-of-band (OOB) step-up triggers.
+                    </p>
+                 </div>
+              </div>
+            </div>
+          </TabsContent>
+
+          {/* ─── Audit Trail Tab ─────────────────────────────────────────── */}
+          <TabsContent value="audit">
+            <div className="bg-card border rounded-[2.5rem] overflow-hidden shadow-sm">
+              <div className="p-8 border-b bg-muted/20 flex justify-between items-center">
+                <div>
+                  <h3 className="text-xl font-black tracking-tight flex items-center gap-2">
+                    <History className="h-6 w-6 text-primary" />
+                    System Ledger Logs
+                  </h3>
+                  <p className="text-xs text-muted-foreground font-bold uppercase tracking-widest mt-1 italic">Immutable Admin Event Chain</p>
                 </div>
+              </div>
+              <div className="divide-y max-h-[600px] overflow-y-auto no-scrollbar">
+                {auditLogs.slice().reverse().map(log => (
+                  <div key={log.log_id} className="p-6 hover:bg-muted/30 transition-colors flex gap-6 items-start">
+                    <div className={`h-12 w-12 rounded-2xl shrink-0 flex items-center justify-center ${
+                      log.action_type === 'CONFIG_UPDATE' ? 'bg-primary/10 text-primary' : 
+                      log.action_type.includes('FREEZE') ? 'bg-danger/10 text-danger' : 'bg-muted text-muted-foreground'
+                    }`}>
+                      {log.action_type === 'CONFIG_UPDATE' ? <Settings className="h-6 w-6" /> : 
+                       log.action_type.includes('FREEZE') ? <Lock className="h-6 w-6" /> : <Activity className="h-6 w-6" />}
+                    </div>
+                    <div className="flex-1">
+                      <div className="flex justify-between items-start mb-1">
+                        <span className="text-[10px] font-black uppercase tracking-widest px-2 py-0.5 bg-muted rounded-md">{log.action_type}</span>
+                        <span className="text-[10px] text-muted-foreground font-mono font-bold">{new Date(log.timestamp).toLocaleString()}</span>
+                      </div>
+                      <p className="text-sm font-bold text-foreground leading-snug">{log.details}</p>
+                      <div className="flex items-center gap-1 mt-2 text-[10px] font-black text-muted-foreground uppercase">
+                        <User className="h-3 w-3" /> Operator Identity: <span className="text-foreground ml-1">{log.admin_id}</span>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
             </div>
           </TabsContent>
         </Tabs>

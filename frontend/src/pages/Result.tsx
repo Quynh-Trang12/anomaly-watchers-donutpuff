@@ -18,14 +18,12 @@ import {
 import { useAuth } from "@/context/AuthContext";
 import { OTPChallenge } from "@/components/result/OTPChallenge";
 import { toast } from "sonner";
-import { formatCurrencyToUSD } from "@/lib/utils";
 
 export default function Result() {
   const location = useLocation();
   const navigate = useNavigate();
   const { userId } = useAuth();
   const [prediction, setPrediction] = useState<PredictionOutput | null>(null);
-  const [showOTP, setShowOTP] = useState(false);
   const [state, setState] = useState<"INITIAL" | "VERIFIED" | "REJECTED">("INITIAL");
 
   useEffect(() => {
@@ -35,11 +33,6 @@ export default function Result() {
       return;
     }
     setPrediction(prediction_data);
-    
-    // Show OTP challenge for step-up transactions
-    if (prediction_data.status === "PENDING_USER_OTP") {
-      setShowOTP(true);
-    }
   }, [location, navigate]);
 
   const handleExportReport = () => {
@@ -48,7 +41,7 @@ export default function Result() {
     const report_lines = [
       "=== AnomalyWatchers Transaction Security Report ===",
       `Transaction ID: ${prediction.transaction_id}`,
-      `Status: ${prediction.status}`,
+      `Status: ${state === "VERIFIED" ? "APPROVED" : state === "REJECTED" ? "CANCELLED" : prediction.status}`,
       `Risk Level: ${prediction.risk_level}`,
       `Confidence Level: ${(prediction.probability * 100).toFixed(2)}%`,
       `Timestamp: ${new Date().toLocaleString()}`,
@@ -73,26 +66,19 @@ export default function Result() {
   };
 
   const handleOTPSuccess = () => {
-    setShowOTP(false);
     setState("VERIFIED");
-    toast.success("Security code verified. Transaction authorized.");
   };
 
   const handleOTPFail = () => {
-    setShowOTP(false);
     setState("REJECTED");
-    toast.error("Verification failed. Transaction cancelled.");
   };
 
   if (!prediction) return null;
 
-  const originalData = location.state?.originalData;
-  const oldbalanceOrig = originalData?.oldbalanceOrig || 0;
-  const amount = originalData?.amount || 0;
-
-  const isBlocked = prediction.status === "BLOCKED" || state === "REJECTED";
-  const isApproved = prediction.status === "APPROVED" || state === "VERIFIED";
-  const isPending = prediction.status === "PENDING_USER_OTP";
+  const isApproved = (prediction.status === "APPROVED" && state === "INITIAL") || state === "VERIFIED";
+  const isBlocked  = (prediction.status === "BLOCKED" && state === "INITIAL")  || state === "REJECTED";
+  const isPending  = prediction.status === "PENDING_USER_OTP" && state === "INITIAL";
+  const showOTP    = isPending;
 
   return (
     <Layout>
@@ -119,36 +105,40 @@ export default function Result() {
                isBlocked ? "Transaction Blocked" : 
                isPending ? "Verification Required" : ""}
             </h1>
-            <p className="text-muted-foreground text-lg">{prediction.explanation}</p>
+            <p className="text-muted-foreground text-lg">
+              {state === "VERIFIED" ? "Everything looks good! Your identity has been verified and the payment processed." :
+               state === "REJECTED" ? "The transaction was cancelled due to an invalid security code or user cancellation." :
+               prediction.explanation}
+            </p>
           </div>
 
-          {/* Verification / Review Reference Card */}
-          <div className="bg-muted/50 border rounded-3xl p-6 flex flex-col md:flex-row md:items-center justify-between gap-4">
+          {/* Reference Card */}
+          <div className="bg-muted/30 border rounded-3xl p-6 flex flex-col md:flex-row md:items-center justify-between gap-4">
             <div className="flex items-center gap-4">
               <div className="p-3 bg-primary/10 rounded-2xl text-primary">
                 <ShieldCheck className="h-6 w-6" />
               </div>
               <div>
-                <p className="text-sm text-muted-foreground uppercase tracking-wider font-bold">Confidence level</p>
+                <p className="text-[10px] text-muted-foreground uppercase tracking-widest font-black">AI RISK PROBABILITY</p>
                 <h2 className="text-2xl font-black">{(prediction.probability * 100).toFixed(1)}%</h2>
               </div>
             </div>
             <div className="text-right">
-              <p className="text-[10px] text-muted-foreground uppercase tracking-widest font-bold">Transaction Reference</p>
+              <p className="text-[10px] text-muted-foreground uppercase tracking-widest font-black">REFERENCE ID</p>
               <p className="font-mono text-sm font-medium">{prediction.transaction_id}</p>
             </div>
           </div>
 
           {/* OTP Challenge Component */}
-          {showOTP && prediction?.status === "PENDING_USER_OTP" && (
+          {showOTP && (
             <div className="bg-card border-2 border-primary/20 rounded-3xl p-8 shadow-xl">
-              <div className="bg-amber-500/10 border border-amber-500/20 rounded-xl p-4 mb-6 flex items-center gap-3">
-                <Mail className="h-6 w-6 text-amber-500 shrink-0" />
+              <div className="bg-indigo-500/10 border border-indigo-500/20 rounded-xl p-4 mb-6 flex items-center gap-3">
+                <Mail className="h-6 w-6 text-indigo-500 shrink-0" />
                 <div>
-                  <p className="font-bold text-amber-600">Action Required: Check Your Email or Terminal</p>
+                  <p className="font-bold text-indigo-600">Action Required: Authenticate Transaction</p>
                   <p className="text-sm text-muted-foreground mt-0.5">
-                    A 6-digit security code has been sent to <strong>{userId}@example.com</strong>. 
-                    If running locally, check your terminal output for the OTP fallback code.
+                    A security code has been sent to <strong>{userId}@example.com</strong>.
+                    Check your virtual terminal for the fallback OOB code.
                   </p>
                 </div>
               </div>
@@ -195,7 +185,6 @@ export default function Result() {
               variant="outline" 
               size="lg" 
               className="flex-1 h-14 rounded-2xl gap-2 font-bold"
-              aria-label="Export transaction security report as text file"
             >
               <Download className="h-5 w-5" />
               Export Report
@@ -203,13 +192,13 @@ export default function Result() {
             <Button asChild variant="secondary" size="lg" className="flex-1 h-14 rounded-2xl gap-2 font-bold">
               <Link to="/history">
                 <History className="h-5 w-5" />
-                View Activity
+                History
               </Link>
             </Button>
             <Button asChild size="lg" className="flex-1 h-14 rounded-2xl gap-2 font-bold shadow-lg shadow-primary/20">
               <Link to="/simulate">
                 <ArrowLeft className="h-5 w-5" />
-                Return to Wallet
+                Exit Result
               </Link>
             </Button>
           </div>

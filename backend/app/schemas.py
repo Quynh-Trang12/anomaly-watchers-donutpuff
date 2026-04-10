@@ -1,92 +1,100 @@
-"""
-Schemas shared by the FastAPI fraud inference service.
-"""
-
+"""Pydantic v2 schemas for the AnomalyWatchers fraud inference API."""
 from __future__ import annotations
-
 from datetime import datetime
 from enum import Enum
 from typing import Dict, List, Literal, Optional
-
 from pydantic import BaseModel, ConfigDict, Field
 
 
 class TransactionTypeEnum(str, Enum):
-    PAYMENT = "PAYMENT"
+    PAYMENT  = "PAYMENT"
     TRANSFER = "TRANSFER"
     CASH_OUT = "CASH OUT"
-    CASH_IN = "CASH IN"
-    DEBIT = "DEBIT"
+    CASH_IN  = "CASH IN"
+    DEBIT    = "DEBIT"
 
 
 class TransactionStatusEnum(str, Enum):
-    APPROVED = "APPROVED"
-    BLOCKED = "BLOCKED"
-    PENDING_USER_OTP = "PENDING_USER_OTP"
-    CANCELLED = "CANCELLED"
+    APPROVED           = "APPROVED"
+    BLOCKED            = "BLOCKED"
+    PENDING_USER_OTP   = "PENDING_USER_OTP"
+    CANCELLED          = "CANCELLED"
 
 
 class TransactionInput(BaseModel):
     model_config = ConfigDict(use_enum_values=True)
-
-    type: TransactionTypeEnum
-    amount: float = Field(..., ge=0)
-    oldbalanceOrg: float = Field(..., ge=0)
-    newbalanceOrig: float
-    oldbalanceDest: float = Field(default=0, ge=0)
-    newbalanceDest: float = Field(default=0, ge=0)
-    user_id: str = Field(default="user_123")
-    destination_account_id: str = Field(default="")
-    step: int = Field(default=0, ge=0)
+    type:                   TransactionTypeEnum
+    amount:                 float = Field(..., ge=0)
+    oldbalanceOrg:          float = Field(..., ge=0)
+    newbalanceOrig:         float
+    oldbalanceDest:         float = Field(default=0, ge=0)
+    newbalanceDest:         float = Field(default=0, ge=0)
+    user_id:                str   = Field(default="user_1")
+    destination_account_id: str   = Field(default="")
+    step:                   int   = Field(default=0, ge=0)   # 0–743, hour offset from epoch
 
 
 class RiskFactor(BaseModel):
-    factor: str
+    factor:   str
     severity: Literal["info", "warning", "danger"] = "info"
 
 
 class PredictionOutput(BaseModel):
-    probability: float = Field(..., ge=0, le=1)
-    is_fraud: bool
-    risk_level: Literal["Low", "Medium", "High"]
-    status: TransactionStatusEnum
-    explanation: Optional[str] = None
-    risk_factors: List[RiskFactor] = Field(default_factory=list)
+    probability:    float = Field(..., ge=0, le=1)
+    is_fraud:       bool
+    risk_level:     Literal["Low", "Medium", "High"]
+    status:         TransactionStatusEnum
+    explanation:    Optional[str] = None
+    risk_factors:   List[RiskFactor] = Field(default_factory=list)
     transaction_id: str
 
 
 class TransactionRecord(BaseModel):
-    transaction_id: str
-    owner_user_id: str
+    transaction_id:         str
+    owner_user_id:          str
     destination_account_id: Optional[str] = None
-    amount: float
-    type: str
-    status: TransactionStatusEnum
-    probability_score: float
-    timestamp: datetime
-    risk_factors: List[RiskFactor]
-    otp_code: Optional[str] = None  # Stores OTP for PENDING_USER_OTP transactions
+    amount:                 float
+    type:                   str
+    status:                 TransactionStatusEnum
+    probability_score:      float
+    timestamp:              datetime
+    risk_factors:           List[RiskFactor]
+    otp_code:               Optional[str] = None  # ephemeral; never serialised to client
+
+
+class TransactionRecordPublic(BaseModel):
+    """Safe view of a transaction record without the OTP code."""
+    transaction_id:          str
+    owner_user_id:           str
+    destination_account_id:  Optional[str] = None
+    amount:                  float
+    type:                    str
+    status:                  TransactionStatusEnum
+    probability_score:       float
+    timestamp:               datetime
+    risk_factors:            List[RiskFactor]
 
 
 class BusinessRulesUpdate(BaseModel):
+    """Only the admin-configurable subset of business rules."""
     restricted_flagged_status: bool
 
 
 class ConfigurationResponse(BaseModel):
-    ml_thresholds: Dict[str, float]
+    ml_thresholds:  Dict[str, float]
     business_rules: BusinessRulesUpdate
 
 
 class AuditLogEntry(BaseModel):
-    log_id: str
-    timestamp: datetime
+    log_id:      str
+    timestamp:   datetime
     action_type: str
-    admin_id: str
-    details: str
+    admin_id:    str
+    details:     str
 
 
 class HealthResponse(BaseModel):
-    status: str
+    status:        str
     models_loaded: List[str] = Field(default_factory=list)
     feature_count: int = 0
 
@@ -96,11 +104,11 @@ class QueueOverflowNotify(BaseModel):
 
 
 class FreezeConfig(BaseModel):
-    max_failed_otp_attempts: int = Field(..., ge=1, le=20)
+    max_failed_otp_attempts:    int = Field(..., ge=1, le=20)
     observation_window_minutes: int = Field(..., ge=1, le=60)
 
 
 class FrozenAccountEntry(BaseModel):
-    user_id: str
+    user_id:   str
     frozen_at: datetime
-    reason: str
+    reason:    str

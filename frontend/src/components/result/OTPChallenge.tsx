@@ -2,8 +2,20 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Shield, Clock, CheckCircle, XCircle, AlertCircle, Loader } from "lucide-react";
-import { verifyOTP } from "@/api";
+import {
+  Shield,
+  Clock,
+  CheckCircle,
+  XCircle,
+  AlertCircle,
+  Loader,
+} from "lucide-react";
+import {
+  verifyOTP,
+  getTransactionStatus,
+  cancelTransactionOTP,
+  getUserTransactions,
+} from "@/api";
 import { toast } from "sonner";
 
 interface OTPChallengeProps {
@@ -12,21 +24,27 @@ interface OTPChallengeProps {
   onFail: () => void;
 }
 
-const TIMER_SECONDS = 300; // 5 minutes for OTP verification
+const TIMER_SECONDS = 30; // 5 minutes for OTP verification
 
-export function OTPChallenge({ transactionId, onSuccess, onFail }: OTPChallengeProps) {
+export function OTPChallenge({
+  transactionId,
+  onSuccess,
+  onFail,
+}: OTPChallengeProps) {
   const [otp, setOtp] = useState("");
   const [timeLeft, setTimeLeft] = useState(TIMER_SECONDS);
-  const [status, setStatus] = useState<"pending" | "success" | "failed" | "verifying">("pending");
+  const [status, setStatus] = useState<
+    "pending" | "success" | "failed" | "verifying"
+  >("pending");
   const [attempts, setAttempts] = useState(0);
   const [errorMessage, setErrorMessage] = useState("");
   const timerRef = useRef<NodeJS.Timeout | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const announcerRef = useRef<HTMLDivElement>(null);
+  const isFinished = useRef(false);
 
-  // Announce time remaining for screen readers
   const announceTime = useCallback((seconds: number) => {
-    if (seconds === 30 || seconds === 10 || seconds === 5) {
+    if (seconds === 60 || seconds === 30 || seconds === 10 || seconds === 5) {
       if (announcerRef.current) {
         announcerRef.current.textContent = `${seconds} seconds remaining`;
       }
@@ -34,14 +52,15 @@ export function OTPChallenge({ transactionId, onSuccess, onFail }: OTPChallengeP
   }, []);
 
   useEffect(() => {
-    if (status !== "pending") return;
+    if (status !== "pending" && status !== "verifying") return;
 
     timerRef.current = setInterval(() => {
-      setTimeLeft(prev => {
+      setTimeLeft((prev) => {
         const next = prev - 1;
         announceTime(next);
         if (next <= 0) {
-          clearInterval(timerRef.current!);
+          if (timerRef.current) clearInterval(timerRef.current);
+          cancelTransactionOTP(transactionId).catch(() => {}); // Notify backend of expiration
           setStatus("failed");
           setErrorMessage("Verification code has expired.");
           onFail();
@@ -51,10 +70,29 @@ export function OTPChallenge({ transactionId, onSuccess, onFail }: OTPChallengeP
       });
     }, 1000);
 
+    // BACKGROUND POLLING: Check if transaction was frozen/blocked out-of-band
+    const pollInterval = setInterval(async () => {
+      try {
+        const tx = await getTransactionStatus(transactionId);
+        if (tx.status === "BLOCKED") {
+          if (timerRef.current) clearInterval(timerRef.current);
+          clearInterval(pollInterval);
+          setStatus("failed");
+          setErrorMessage(
+            "Security Alert: This transaction has been blocked by emergency protocols.",
+          );
+          onFail();
+        }
+      } catch (e) {
+        // Ignore polling errors
+      }
+    }, 3000);
+
     return () => {
       if (timerRef.current) clearInterval(timerRef.current);
+      clearInterval(pollInterval);
     };
-  }, [status, onFail, announceTime]);
+  }, [status, onFail, announceTime, transactionId]);
 
   useEffect(() => {
     inputRef.current?.focus();
@@ -71,26 +109,58 @@ export function OTPChallenge({ transactionId, onSuccess, onFail }: OTPChallengeP
 
     try {
       await verifyOTP(transactionId, otp);
+      isFinished.current = true;
       setStatus("success");
       if (timerRef.current) clearInterval(timerRef.current);
-      toast.success("OTP verification successful! Transaction approved.");
+      toast.success("Identity verified. Transaction approved!");
       setTimeout(() => onSuccess(), 2000);
     } catch (error: any) {
-      const errorMsg = error.response?.data?.detail || "Invalid security code. Please try again.";
-      setErrorMessage(errorMsg);
-      setAttempts(prev => prev + 1);
-      setOtp("");
-      inputRef.current?.focus();
-      setStatus("pending");
+      const respMsg = error.response?.data?.detail || "Invalid code.";
 
-      if (attempts >= 2) {
+      // Determine if account is frozen
+      if (respMsg.toLowerCase().includes("frozen")) {
         setStatus("failed");
+        isFinished.current = true;
         if (timerRef.current) clearInterval(timerRef.current);
-        toast.error("Too many failed attempts. Transaction blocked.");
+        setErrorMessage(
+          "Your account has been frozen due to too many failed attempts. Please contact support.",
+        );
+        toast.error("Account frozen.");
         onFail();
+      } else {
+        // Just a wrong code
+        setStatus("pending");
+        setOtp("");
+        setAttempts((prev) => prev + 1);
+        setErrorMessage(respMsg);
+        inputRef.current?.focus();
       }
     }
   };
+
+  const handleCancel = async () => {
+    try {
+      await cancelTransactionOTP(transactionId);
+    } catch (e) {
+      // Logic proceed to UI update regardless of API success
+    }
+    isFinished.current = true;
+    if (timerRef.current) clearInterval(timerRef.current);
+    setStatus("failed");
+    setErrorMessage("Transaction cancelled.");
+    toast.info("Transaction cancelled.");
+    onFail();
+  };
+
+  // CLEANUP ON UNMOUNT: If user navigates away without finishing, CANCEL the TX
+  useEffect(() => {
+    return () => {
+      // If we are discarding the component without a final result, auto-cancel on backend
+      if (!isFinished.current) {
+        cancelTransactionOTP(transactionId).catch(() => {});
+      }
+    };
+  }, [transactionId]);
 
   const formatTime = (seconds: number) => {
     const mins = Math.floor(seconds / 60);
@@ -101,12 +171,14 @@ export function OTPChallenge({ transactionId, onSuccess, onFail }: OTPChallengeP
   if (status === "success") {
     return (
       <div className="text-center space-y-4" role="status" aria-live="polite">
-        <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-success-muted">
+        <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-success/10 border-2 border-success">
           <CheckCircle className="h-8 w-8 text-success" aria-hidden="true" />
         </div>
-        <h3 className="text-lg font-semibold text-success">Verification Successful</h3>
+        <h3 className="text-xl font-bold text-success">
+          Verification Complete
+        </h3>
         <p className="text-sm text-muted-foreground">
-          Your identity has been verified. Transaction approved.
+          Identity confirmed. Moving to final processing...
         </p>
       </div>
     );
@@ -115,12 +187,12 @@ export function OTPChallenge({ transactionId, onSuccess, onFail }: OTPChallengeP
   if (status === "failed") {
     return (
       <div className="text-center space-y-4" role="status" aria-live="polite">
-        <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-danger-muted">
+        <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-danger/10 border-2 border-danger">
           <XCircle className="h-8 w-8 text-danger" aria-hidden="true" />
         </div>
-        <h3 className="text-lg font-semibold text-danger">Verification Failed</h3>
-        <p className="text-sm text-muted-foreground">
-          {timeLeft === 0 ? "Verification code has expired." : "Too many failed attempts."} Transaction blocked.
+        <h3 className="text-xl font-bold text-danger">Verification Failed</h3>
+        <p className="text-sm text-balance text-muted-foreground">
+          {errorMessage || "Transaction has been declined."}
         </p>
       </div>
     );
@@ -128,38 +200,47 @@ export function OTPChallenge({ transactionId, onSuccess, onFail }: OTPChallengeP
 
   return (
     <div className="space-y-6">
-      {/* Screen reader announcer */}
-      <div ref={announcerRef} className="sr-only" aria-live="polite" aria-atomic="true" />
+      <div
+        ref={announcerRef}
+        className="sr-only"
+        aria-live="polite"
+        aria-atomic="true"
+      />
 
       <div className="text-center space-y-2">
-        <div className="inline-flex items-center justify-center w-12 h-12 rounded-full bg-warning-muted mb-2">
+        <div className="inline-flex items-center justify-center w-12 h-12 rounded-full bg-warning/10 border-2 border-warning mb-2">
           <Shield className="h-6 w-6 text-warning" aria-hidden="true" />
         </div>
-        <h3 className="text-lg font-semibold">Step-Up Verification Required</h3>
+        <h3 className="text-lg font-bold">Identity Verification</h3>
         <p className="text-sm text-muted-foreground">
-          Enter the 6-digit code sent to your email to verify this transaction
+          We sent a 6-digit code to your email. Enter it below to authorize this
+          payment.
         </p>
       </div>
 
-      {/* Timer */}
-      <div className="flex items-center justify-center gap-2 text-muted-foreground">
+      <div className="flex items-center justify-center gap-2 text-sm text-muted-foreground bg-muted/30 py-2 rounded-full">
         <Clock className="h-4 w-4" aria-hidden="true" />
-        <span className={timeLeft <= 30 ? "text-danger font-medium" : ""}>
-          Time remaining: {formatTime(timeLeft)}
+        <span
+          className={timeLeft <= 30 ? "text-danger font-bold" : "font-mono"}
+        >
+          Expires in: {formatTime(timeLeft)}
         </span>
       </div>
 
-      {/* Error Message */}
       {errorMessage && (
-        <div className="bg-danger/10 border border-danger/20 rounded-lg p-3 flex gap-3 items-start">
-          <AlertCircle className="h-5 w-5 text-danger shrink-0 mt-0.5" />
-          <p className="text-sm text-danger">{errorMessage}</p>
+        <div className="bg-danger/10 border border-danger/20 rounded-xl p-3 flex gap-3 items-center">
+          <AlertCircle className="h-5 w-5 text-danger shrink-0" />
+          <p className="text-sm font-medium text-danger">{errorMessage}</p>
         </div>
       )}
 
-      {/* OTP Input */}
       <div className="space-y-2">
-        <Label htmlFor="otp">Verification Code</Label>
+        <Label
+          htmlFor="otp"
+          className="text-xs uppercase tracking-widest text-muted-foreground font-bold"
+        >
+          Security Code
+        </Label>
         <Input
           ref={inputRef}
           id="otp"
@@ -168,36 +249,38 @@ export function OTPChallenge({ transactionId, onSuccess, onFail }: OTPChallengeP
           pattern="[0-9]*"
           maxLength={6}
           value={otp}
-          onChange={e => setOtp(e.target.value.replace(/\D/g, ""))}
-          placeholder="Enter 6-digit code"
-          className="text-center font-mono text-xl tracking-widest"
-          aria-describedby="otp-hint"
-          autoComplete="one-time-code"
+          onChange={(e) => setOtp(e.target.value.replace(/\D/g, ""))}
+          placeholder="000000"
+          className="h-16 text-center font-mono text-3xl tracking-[0.5em] rounded-2xl bg-muted/50 border-2 focus-visible:ring-primary"
           disabled={status === "verifying"}
         />
-        <p id="otp-hint" className="text-xs text-muted-foreground text-center">
-          {attempts > 0 && (
-            <span className="text-danger">
-              Incorrect code. {3 - attempts} attempt{3 - attempts !== 1 ? "s" : ""} remaining.
-            </span>
-          )}
-        </p>
       </div>
 
-      <Button
-        onClick={handleVerify}
-        disabled={otp.length !== 6 || status === "verifying"}
-        className="w-full"
-      >
-        {status === "verifying" ? (
-          <>
-            <Loader className="mr-2 h-4 w-4 animate-spin" />
-            Verifying...
-          </>
-        ) : (
-          "Verify"
-        )}
-      </Button>
+      <div className="flex flex-col gap-3">
+        <Button
+          onClick={handleVerify}
+          disabled={otp.length !== 6 || status === "verifying"}
+          className="h-14 rounded-xl text-lg font-bold shadow-lg"
+        >
+          {status === "verifying" ? (
+            <>
+              <Loader className="mr-2 h-5 w-5 animate-spin" />
+              Verifying...
+            </>
+          ) : (
+            "Confirm Transaction"
+          )}
+        </Button>
+
+        <Button
+          variant="ghost"
+          onClick={handleCancel}
+          disabled={status === "verifying"}
+          className="text-muted-foreground hover:text-danger hover:bg-danger/5"
+        >
+          Cancel Transaction
+        </Button>
+      </div>
     </div>
   );
 }
