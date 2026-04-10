@@ -1,9 +1,16 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Layout } from "@/components/layout/Layout";
 import { TransactionForm } from "@/components/simulator/TransactionForm";
+import { useAuth } from "@/context/AuthContext";
 
 export default function Simulate() {
   const [refreshTrigger, setRefreshTrigger] = useState<number>(0);
+  const { setHasActivelySelectedUser } = useAuth();
+
+  useEffect(() => {
+    // When entering the Wallet page, mark the default user as actively selected
+    setHasActivelySelectedUser(true);
+  }, [setHasActivelySelectedUser]);
 
   return (
     <Layout>
