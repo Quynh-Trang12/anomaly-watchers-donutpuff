@@ -10,6 +10,10 @@ import numpy as np  # type: ignore
 
 
 def rename_to_snake_case(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Standardizes the PaySim raw column names into an internal snake_case format.
+    Ensures consistency between raw ingestion and downstream engineered features.
+    """
     COLUMN_MAP = {
         "step": "step",
         "type": "transaction_type",
@@ -27,6 +31,11 @@ def rename_to_snake_case(df: pd.DataFrame) -> pd.DataFrame:
 
 
 def drop_post_transaction_leaks(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Removes columns that are 'leaked' during a future transaction event.
+    For effective fraud detection, we must only use information available 
+    at the EXACT moment of transaction initiation.
+    """
     LEAKED_COLUMNS = [
         "originator_new_balance",
         "destination_new_balance",
@@ -52,12 +61,22 @@ def engineer_financial_ratios(df):
 
 
 def apply_logarithmic_transforms(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Applies log transformation to monetary amounts. 
+    This handles the high variance and extreme outliers typical in financial data, 
+    making it easier for models like Random Forest to segment the data.
+    """
     df = df.copy()
     df["log_transaction_amount"] = np.log1p(df["transaction_amount"])
     return df
 
 
 def apply_cyclical_time_encoding(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Encodes the 'step' (hour) into Sine/Cosine waves.
+    This preserves the cyclical nature of time (e.g., hour 23 is close to hour 0), 
+    which is critical for detecting temporal fraud patterns (like night-time bursts).
+    """
     HOURS_IN_DAY = 24
     df = df.copy()
     df["time_hour_sin"] = np.sin(2 * np.pi * df["step"] / HOURS_IN_DAY)
@@ -74,6 +93,11 @@ def drop_redundant_raw_columns(df):
 
 
 def encode_categoricals_and_drop_identifiers(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Final vectorization step. 
+    One-hot encodes transaction types and removes non-numeric account identifiers 
+    to create the final feature vector for Scikit-Learn.
+    """
     DUMMY_RENAME = {
         "transaction_type_CASH_OUT": "is_type_cash_out",
         "transaction_type_DEBIT": "is_type_debit",
@@ -91,12 +115,12 @@ def encode_categoricals_and_drop_identifiers(df: pd.DataFrame) -> pd.DataFrame:
     df = df.drop(columns=["originator_id", "destination_id"], errors="ignore")
 
     # Defense against missing dummies in streaming chunks or single API payloads
+    # Ensures the matrix always contains all 12 expected columns
     for col in DUMMY_RENAME.values():
         if col not in df.columns:
             df[col] = 0
 
-    # Standardize column order. The target is included only for training data,
-    # and must be excluded for API inference payloads.
+    # Strict column ordering for model compatibility
     expected_order = [
         "originator_old_balance",
         "destination_old_balance",

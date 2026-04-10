@@ -8,7 +8,11 @@ logger = logging.getLogger("anomaly_watchers.mail")
 
 async def send_security_alert_email(recipient_email: str, otp_code: str, transaction_details: dict):
     """
-    Sends an out-of-band security alert email with an OTP for transaction verification.
+    Dispatches an out-of-band security alert email.
+    
+    This service handles the notification of users when the AI detects a 'Medium Risk'
+    transaction. It provides the 6-digit OTP required to finalize the payment 
+    and includes an emergency 'Freeze' link for immediate account protection.
     """
     
     smtp_server = os.getenv("SMTP_SERVER", "localhost")

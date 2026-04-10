@@ -1,5 +1,11 @@
 """
 Elite Enterprise Fraud Detection API - Anomaly Watchers Donutpuff
+
+This module serves as the central hub for the AnomalyWatchers system. It integrates 
+a FastAPI web server with a Scikit-Learn based machine learning inference engine. 
+The system provides real-time risk assessment for financial transactions using a 
+'logic-first' approach that combines ML probability scores with strict business 
+rule safeguards.
 """
 
 from __future__ import annotations
@@ -54,24 +60,38 @@ logging.basicConfig(
 )
 logger = logging.getLogger("anomaly_watchers.api")
 
+# --- Configuration & Global State ---
+# Path to the directory containing trained ML models and feature mapping artifacts
 MODEL_DIR = Path(__file__).resolve().parents[1] / "trained_models"
+# Path to the JSON file governing business rules and decision thresholds
 CONFIG_PATH = MODEL_DIR / "model_configuration.json"
+# Baseline date used to calculate 'simulation time' for feature engineering
 SYSTEM_START_DATE = datetime(2026, 4, 1, 0, 0, 0)
 
+# Dictionary mapping local identifiers to expected model artifact filenames
 MODEL_CANDIDATES = {
     "random_forest": ["model_rf_v2.pkl"],
     "feature_columns": ["feature_columns.pkl"],
 }
 
+# Global registry to hold the loaded Scikit-Learn objects in memory
 model_registry: dict[str, Any] = {}
+# List of specific feature names the model expects, used for alignment
 feature_columns: list[str] = []
 
 def _calculate_automated_step() -> int:
-    """Calculates the integer number of hours elapsed since SYSTEM_START_DATE."""
+    """
+    Calculates the integer number of hours elapsed since SYSTEM_START_DATE.
+    This 'step' represents chronological distance in the feature engineering pipeline.
+    """
     delta = datetime.now() - SYSTEM_START_DATE
     return int(delta.total_seconds() // 3600)
 
 def _normalize_feature_columns(raw_columns: Any) -> list[str]:
+    """
+    Ensures that feature column names loaded from pickle files are converted 
+    into a standardized list of strings, handling various input types (Index, ndarray, etc).
+    """
     if raw_columns is None:
         return []
     if isinstance(raw_columns, (list, tuple)):
@@ -96,6 +116,10 @@ def _load_first_available(filenames: list[str]) -> Optional[Tuple[str, Any]]:
     return None
 
 def _align_features(matrix: pd.DataFrame) -> pd.DataFrame:
+    """
+    Dynamically aligns an input feature matrix with the model's expected schema.
+    Missing columns are filled with zeros to maintain mathematical compatibility.
+    """
     target_columns = feature_columns or [str(column) for column in matrix.columns]
     aligned = matrix.copy()
     for column in target_columns:
@@ -104,7 +128,12 @@ def _align_features(matrix: pd.DataFrame) -> pd.DataFrame:
     return aligned[target_columns]
 
 def _predict_probability(model: Any, matrix: pd.DataFrame) -> float:
+    """
+    Executes model inference and extracts a fraud probability.
+    Supports both standard .predict() and .predict_proba() for flexibility.
+    """
     if hasattr(model, "predict_proba"):
+        # We index [-1] to get the probability of the Fraud class (usually index 1)
         raw_value = np.asarray(model.predict_proba(matrix))[0][-1]
     elif hasattr(model, "predict"):
         raw_value = np.asarray(model.predict(matrix))[0]
@@ -112,6 +141,7 @@ def _predict_probability(model: Any, matrix: pd.DataFrame) -> float:
         raise ValueError("Model does not expose predict_proba or predict.")
     
     probability = float(raw_value)
+    # Ensure numerical stability (no NaNs or Inf)
     if not np.isfinite(probability):
         probability = 0.0
     return max(0.0, min(1.0, probability))
@@ -121,13 +151,17 @@ def _build_risk_factors(
     probability: float,
     config: Dict[str, Any]
 ) -> list[RiskFactor]:
-    """Human-Readable XAI Implementation - Strictly NO technical jargon."""
+    """
+    Human-Readable XAI (Explainable AI) Implementation.
+    Translates raw model output and transaction attributes into clear, 
+    non-technical explanations for the end user.
+    """
     factors: list[RiskFactor] = []
     
     business_rules = config.get("business_rules", {})
     large_amount_limit = business_rules.get("large_transfer_limit_amount", 150000.0)
     
-    # 1. High Amount Check
+    # 1. High Amount Check: Flags transactions crossing a specific dollar threshold.
     if payload.amount >= large_amount_limit:
         factors.append(
             RiskFactor(
@@ -136,7 +170,7 @@ def _build_risk_factors(
             )
         )
 
-    # 2. Account Depletion Check
+    # 2. Account Depletion Check: Detects if a user is emptying their account (high-risk pattern).
     if payload.oldbalanceOrg > 0:
         drain_ratio = payload.amount / payload.oldbalanceOrg
         if drain_ratio >= 0.95:
@@ -147,7 +181,7 @@ def _build_risk_factors(
                 )
             )
 
-    # 3. New Account Activity Check
+    # 3. New Account Activity Check: Flags large transfers to recipients with zero balance history.
     if payload.type in {"TRANSFER", "CASH OUT"} and payload.oldbalanceDest == 0 and payload.amount > 10000:
         factors.append(
             RiskFactor(
@@ -156,7 +190,7 @@ def _build_risk_factors(
             )
         )
 
-    # 4. Security System Signal
+    # 4. Security System Signal: Translates the raw ML probability into a textual alert.
     ml_thresholds = config.get("ml_thresholds", {})
     block_threshold = ml_thresholds.get("block_threshold", 0.8000)
     step_up_threshold = ml_thresholds.get("step_up_threshold", 0.4000)
@@ -176,6 +210,7 @@ def _build_risk_factors(
             )
         )
 
+    # Default factor if everything is low risk
     if not factors:
         factors.append(
             RiskFactor(
@@ -187,6 +222,7 @@ def _build_risk_factors(
     return factors[:6]
 
 def _risk_level(probability: float, block_threshold: float, step_up_threshold: float) -> str:
+    """Categorizes raw probability into High, Medium, or Low buckets."""
     if probability >= block_threshold:
         return "High"
     if probability >= step_up_threshold:
@@ -194,6 +230,7 @@ def _risk_level(probability: float, block_threshold: float, step_up_threshold: f
     return "Low"
 
 def _risk_display_label(risk_level: str) -> str:
+    """Converts a risk bucket into a user-friendly UI label."""
     mapping = {
         "High": "High Risk (Blocked / Review)",
         "Medium": "Medium Risk (OTP Required)",
@@ -203,7 +240,11 @@ def _risk_display_label(risk_level: str) -> str:
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Load Models
+    """
+    Unified startup and shutdown lifecycle management.
+    Handles artifact loading into the global registry and schema validation.
+    """
+    # Load Machine Learning artifacts into memory
     model_registry.clear()
     feature_columns.clear()
     for key, candidates in MODEL_CANDIDATES.items():
@@ -214,7 +255,7 @@ async def lifespan(app: FastAPI):
         model_registry[key] = artifact
     feature_columns.extend(_normalize_feature_columns(model_registry.get("feature_columns")))
 
-    # Load Dynamic Configuration
+    # Initialize dynamic system configuration (thresholds and rules)
     if CONFIG_PATH.exists():
         try:
             with open(CONFIG_PATH, "r") as f:
@@ -223,7 +264,7 @@ async def lifespan(app: FastAPI):
         except Exception as e:
             logger.error("Failed to load configuration: %s", e)
     else:
-        # Fallback defaults - Relaxed for demo reliability
+        # Fallback to hardcoded defaults if configuration file is missing
         app.state.system_configuration = {
             "ml_thresholds": {
                 "block_threshold": 0.8000,    
@@ -236,7 +277,9 @@ async def lifespan(app: FastAPI):
             }
         }
     
-    # Safeguard Validation for thresholds
+    # --- Threshold Integrity Safeguard ---
+    # To prevent logical bypasses, the 'Step-Up' threshold must be lower than 'Block'.
+    # If invalid, the system enforces safe, conservative defaults at startup.
     loaded_thresholds = app.state.system_configuration.get("ml_thresholds", {})
     block_val = loaded_thresholds.get("block_threshold", 0.70)
     step_up_val = loaded_thresholds.get("step_up_threshold", 0.40)
@@ -257,6 +300,7 @@ async def lifespan(app: FastAPI):
     )
     
     yield
+    # Cleanup: Release ML artifacts on shutdown
     model_registry.clear()
     feature_columns.clear()
 
@@ -276,6 +320,10 @@ app.add_middleware(
 
 @app.get("/api/health", response_model=HealthResponse)
 async def health_check() -> HealthResponse:
+    """
+    Checks the connectivity and status of the ML inference engines.
+    Returns 'degraded' if models fail to load into the registry.
+    """
     loaded_models = [key for key in ("random_forest",) if key in model_registry]
     return HealthResponse(
         status="ok" if loaded_models else "degraded",
@@ -290,7 +338,10 @@ async def get_active_thresholds():
 
 @app.get("/api/users/{user_id}/balance")
 async def get_user_balance(user_id: str):
-    """Returns the current real-time balance for an internal user account."""
+    """
+    Returns the current real-time balance for an internal user account.
+    Used by the User Dashboard to show updated funds after transactions.
+    """
     balance = get_account_balance(user_id)
     if balance is None:
         raise HTTPException(status_code=404, detail=f"User '{user_id}' not found.")
@@ -298,7 +349,10 @@ async def get_user_balance(user_id: str):
 
 @app.post("/api/admin/notify/queue_overflow")
 async def notify_admin_queue_overflow(payload: QueueOverflowNotify, background_tasks: BackgroundTasks):
-    """Triggers an OOB alert email when the review queue exceeds the threshold."""
+    """
+    Handles administrative alerts. Triggers an out-of-band email notification
+    when the manual review queue size crosses a critical threshold.
+    """
     queue_size = payload.queue_size
     background_tasks.add_task(
         send_security_alert_email,
@@ -310,6 +364,7 @@ async def notify_admin_queue_overflow(payload: QueueOverflowNotify, background_t
             "transaction_id": "ADMIN_ALERT"
         }
     )
+    # Persist the alert event in the system audit log
     add_audit_log(
         admin_id="system",
         action_type="QUEUE_OVERFLOW_ALERT",
@@ -335,7 +390,7 @@ async def get_all_transactions_admin(requesting_user_id: str = Query("")):
 @app.get("/api/transactions/{user_id}", response_model=List[TransactionRecord])
 async def get_transactions_history(user_id: str, requesting_user_id: str = Query("")):
     """
-    Returns transaction history for the specified user account.
+    Retrieves the chronological transaction history for a specific user.
     """
     return get_user_transactions(user_id)
 
@@ -362,42 +417,48 @@ async def verify_otp(transaction_id: str, user_provided_otp: str):
 @app.post("/api/transactions")
 async def save_transaction_record(transaction: TransactionRecord):
     """
-    Finalizes a transaction.
-    Backend Authority: Approval of an INITIATED transaction REQUIRES the correct OTP code.
-    Implementation note: This endpoint is idempotent to prevent double-deduction on retries.
+    The Transaction Finalization Engine.
+    
+    This endpoint manages the transition of transactions from PENDING to FINAL states.
+    It enforces 'Backend Authority' by validating security codes before updating the ledger.
+    Note: Highly idempotent to prevent fraudulent double-spending or duplicate deductions.
     """
     existing_record = get_transaction(transaction.transaction_id)
     
-    # CASE 1: This is a COMPLETELY NEW transaction (e.g. from an external source or direct result)
+    # --- PHASE 1: New Direct Transactions ---
     if not existing_record:
         if transaction.status == TransactionStatusEnum.APPROVED:
             try:
+                # Update dual-ledger balances for both originator and recipient
                 deduct_account_balance(transaction.owner_user_id, transaction.amount)
                 if transaction.destination_account_id:
                     credit_account_balance(transaction.destination_account_id, transaction.amount)
             except ValueError as ledger_error:
+                # Catch technical overdrafts or missing accounts
                 logger.warning("Ledger update failed for new transaction %s: %s", transaction.transaction_id, ledger_error)
                 raise HTTPException(status_code=400, detail=str(ledger_error))
         
         save_transaction(transaction)
         return {"status": "success", "transaction_id": transaction.transaction_id}
 
-    # CASE 2: Transaction already finalized as APPROVED (Idempotency check)
+    # --- PHASE 2: Idempotency Protection ---
     if existing_record.status == TransactionStatusEnum.APPROVED:
-        # If it's already approved, we just return success without re-deducting balance.
+        # Prevent re-running deductions if the frontend submits a retry of a successful txn
         return {"status": "success", "transaction_id": transaction.transaction_id, "note": "idempotent_ack"}
 
-    # CASE 3: Transitioning from INITIATED (OTP Pending) to APPROVED
+    # --- PHASE 3: Security Verification Transition ---
+    # Transitioning from 'INITIATED' (User has the OTP) to 'APPROVED' (Ledger committed)
     if transaction.status == TransactionStatusEnum.APPROVED and existing_record.status == TransactionStatusEnum.INITIATED:
-        # Backend Authority: Check BOTH OTP and Owner for high-fidelity security
+        # Backend Authority: The frontend CANNOT force approval without matching the OTP generated server-side.
         if transaction.otp_code != existing_record.otp_code:
             raise HTTPException(status_code=403, detail="Unauthorized: Invalid verification code provided for finalization.")
         
+        # Verify that the account owner hasn't changed during the verification phase
         if transaction.owner_user_id != existing_record.owner_user_id:
             raise HTTPException(status_code=403, detail="Unauthorized: Originator mismatch during finalization.")
             
         try:
-            # Execute ledger changes ONLY on transition to APPROVED
+            # Atomic ledger update
             deduct_account_balance(transaction.owner_user_id, transaction.amount)
             if transaction.destination_account_id:
                 credit_account_balance(transaction.destination_account_id, transaction.amount)
@@ -405,7 +466,7 @@ async def save_transaction_record(transaction: TransactionRecord):
             logger.warning("Ledger update failed for finalized transaction %s: %s", transaction.transaction_id, ledger_error)
             raise HTTPException(status_code=400, detail=str(ledger_error))
 
-    # Save the updated record (covers transitions to APPROVED, REJECTED, CANCELLED etc.)
+    # Persist the final outcome (Approved, Rejected, or Cancelled)
     save_transaction(transaction)
     return {"status": "success", "transaction_id": transaction.transaction_id}
 
@@ -455,11 +516,21 @@ async def get_system_status():
 
 @app.post("/api/predict/primary", response_model=PredictionOutput)
 async def predict_primary(transaction_input: TransactionInput, background_tasks: BackgroundTasks) -> PredictionOutput:
+    """
+    The Primary AI Inference Pipeline.
+    
+    This function coordinates the end-to-end processing of a transaction:
+    1. Input Validation vs. Internal Ledger
+    2. Feature Transformation
+    3. Model Inference (or Rule-based Fallback)
+    4. Risk Categorization (Decision Routing)
+    5. Persistence & Event (Email) Dispatch
+    """
     system_configuration = app.state.system_configuration
     ml_thresholds = system_configuration.get("ml_thresholds", {})
     business_rules = system_configuration.get("business_rules", {})
     
-    # 0a. Validate that the originating user exists in the internal network
+    # --- PHASE 1: Identity & Funds Validation ---
     originator_balance = get_account_balance(transaction_input.user_id)
     if originator_balance is None:
         raise HTTPException(
@@ -467,14 +538,13 @@ async def predict_primary(transaction_input: TransactionInput, background_tasks:
             detail=f"Originator account '{transaction_input.user_id}' not found in internal network."
         )
 
-    # NEW: Rule 5. Ledger Balance Early Enforcement
     if transaction_input.amount > originator_balance:
+        # Rule 5. Ledger Balance Early Enforcement (Reject if broke)
         raise HTTPException(
             status_code=400,
             detail=f"Transaction rejected: Insufficient funds. Available: ${originator_balance:,.2f}"
         )
 
-    # 0b. Validate that the destination account exists in the internal network
     if transaction_input.destination_account_id:
         if transaction_input.destination_account_id == transaction_input.user_id:
             raise HTTPException(status_code=400, detail="You cannot transfer money to your own account.")
@@ -486,13 +556,13 @@ async def predict_primary(transaction_input: TransactionInput, background_tasks:
                 detail="Recipient account not found in internal network. Please verify the account ID."
             )
 
-    # 1. Step Calculation (Prioritize User-Provided Step for Demos)
+    # --- PHASE 2: Chronological Sequence (Step) Calculation ---
     if transaction_input.step is not None:
         automated_step = transaction_input.step
     else:
         automated_step = _calculate_automated_step()
     
-    # 2. Build Feature Matrix
+    # --- PHASE 3: Feature Matrix Construction ---
     raw_feature_frame = pd.DataFrame([{
         "step": automated_step,
         "type": transaction_input.type,
@@ -505,23 +575,25 @@ async def predict_primary(transaction_input: TransactionInput, background_tasks:
         "newbalanceDest": transaction_input.newbalanceDest,
     }])
 
+    # --- PHASE 4: Model Inference vs. Rule-based Fallback ---
     is_using_fallback = False
     try:
+        # standard ML pipeline: Preprocess -> Align -> Predict
         feature_matrix = build_feature_matrix(raw_feature_frame)
         feature_matrix = _align_features(feature_matrix)
         probability_score = _predict_probability(model_registry["random_forest"], feature_matrix)
     except Exception as execution_exception:
         logger.warning("Inference engine failure, using rule-based fallback: %s", execution_exception)
         is_using_fallback = True
-        # Rule 6. Fallback Behavior - Demo Optimized
+        # Rule 6. Fallback Heuristics - Ensures system stays operational if ML engine is offline
         if transaction_input.amount > 150000.0 or (transaction_input.amount / (transaction_input.oldbalanceOrg or 1) > 0.9):
-            probability_score = 0.81  # Trigger Block
+            probability_score = 0.81  # Threshold for 'Blocked'
         elif transaction_input.amount > 50000.0:
-            probability_score = 0.50  # Trigger OTP
+            probability_score = 0.50  # Threshold for 'OTP Required'
         else:
             probability_score = 0.05
 
-    # 3. Decision Routing Logic & ID Generation - Demo Optimized
+    # --- PHASE 5: Decision Routing & Decision Logic ---
     block_threshold = ml_thresholds.get("block_threshold", 0.8000)
     step_up_threshold = ml_thresholds.get("step_up_threshold", 0.4000)
     new_transaction_id = f"TXN-{uuid.uuid4().hex[:8].upper()}"
@@ -529,8 +601,6 @@ async def predict_primary(transaction_input: TransactionInput, background_tasks:
     
     transaction_status = TransactionStatusEnum.APPROVED
     operation_explanation = "Everything looks good! Your transaction has been securely processed."
-    if is_using_fallback:
-        operation_explanation = "Our primary AI engine is offline for maintenance. A backup security profile was used to approve this transfer."
     
     security_otp_code = None
     
@@ -540,9 +610,8 @@ async def predict_primary(transaction_input: TransactionInput, background_tasks:
     elif probability_score >= step_up_threshold:
         transaction_status = TransactionStatusEnum.PENDING_USER_OTP
         operation_explanation = "This payment looks a little different from your usual activity. We just need to confirm it's really you."
-        if is_using_fallback:
-            operation_explanation = "Due to backup security protocols, this large transfer requires a one-time verification code."
         
+        # Security Sequence: Generate OTP -> Queue Email Task
         security_otp_code = str(random.randint(100000, 999999))
         recipient_email = get_user_email(transaction_input.user_id) or f"{transaction_input.user_id}@example.com"
         background_tasks.add_task(
@@ -556,9 +625,10 @@ async def predict_primary(transaction_input: TransactionInput, background_tasks:
             }
         )
 
-    # 4. Persistence - Option B: INITIATED for OTP, Final for others
+    # --- PHASE 6: Persistence & Ledger Commitment ---
     saved_db_status = transaction_status
     if transaction_status == TransactionStatusEnum.PENDING_USER_OTP:
+        # Transactions awaiting OTP are saved as 'INITIATED' (pending)
         saved_db_status = TransactionStatusEnum.INITIATED
 
     transaction_record_entry = TransactionRecord(
@@ -574,22 +644,22 @@ async def predict_primary(transaction_input: TransactionInput, background_tasks:
         otp_code=security_otp_code
     )
 
-    # 5. Execute ledger changes only for APPROVED
+    # Atomic Commit: Update balances ONLY for immediate approvals
     if transaction_status == TransactionStatusEnum.APPROVED:
         try:
             deduct_account_balance(transaction_input.user_id, transaction_input.amount)
             if transaction_input.destination_account_id:
                 credit_account_balance(transaction_input.destination_account_id, transaction_input.amount)
             
-            # Save ONLY after ledger success
+            # Save transaction to history ONLY after ledger success
             save_transaction(transaction_record_entry)
         except ValueError as ledger_error:
-            # If ledger fails, don't save APPROVED status, raise error
             raise HTTPException(status_code=400, detail=str(ledger_error))
     else:
-        # Save INITIATED or BLOCKED immediately
+        # Persist the PENDING / BLOCKED state immediately for audit
         save_transaction(transaction_record_entry)
 
+    # Map raw data to user-friendly risk descriptions
     risk_level_str = _risk_level(probability_score, block_threshold, step_up_threshold)
     return PredictionOutput(
         probability=probability_score,

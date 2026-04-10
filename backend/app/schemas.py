@@ -18,8 +18,15 @@ class TransactionTypeEnum(str, Enum):
     CASH_IN = "CASH_IN"
     DEBIT = "DEBIT"
 
-
 class TransactionStatusEnum(str, Enum):
+    """
+    State machine for transaction processing.
+    APPROVED: Ledger updated, funds transferred.
+    BLOCKED: Prevented by security system.
+    CANCELLED: Rejected by the user.
+    PENDING_USER_OTP: Awaiting 6-digit verification.
+    INITIATED: Backend internal state for tracking pending verify-otp attempts.
+    """
     APPROVED = "APPROVED"
     BLOCKED = "BLOCKED"
     CANCELLED = "CANCELLED"
@@ -28,6 +35,10 @@ class TransactionStatusEnum(str, Enum):
 
 
 class TransactionInput(BaseModel):
+    """
+    Input schema for the primary prediction endpoint.
+    Maps to the features expected by the PaySim-trained Random Forest model.
+    """
     model_config = ConfigDict(use_enum_values=True)
 
     type: TransactionTypeEnum

@@ -1,14 +1,30 @@
-from datetime import datetime
+"""
+Local In-Memory Data Store and Financial Ledger Management
+
+This module simulates a persistent database for the AnomalyWatchers system. 
+It manages three primary data domains:
+1. Transactional storage for historical records.
+2. An administrative audit log for tracking system events.
+3. A synchronized financial ledger for managing user account balances.
+"""
+
+import logging
 import uuid
+from datetime import datetime
 from typing import List, Dict, Optional
 from .schemas import TransactionRecord, TransactionStatusEnum, AuditLogEntry
 
-# In-memory database for simulation
-# In a production environment, this would be SQLAlchemy or Motor
+logger = logging.getLogger("anomaly_watchers.db")
+
+# --- In-Memory State Containers ---
+
+# Primary storage for transaction history. Key = UUID, Value = TransactionRecord.
 transactions_db: Dict[str, TransactionRecord] = {}
+
+# Chronological list of all system audit logs (alerts, overrides, etc).
 audit_logs: List[AuditLogEntry] = []
 
-# Internal account registry — simulates a real banking ledger
+# Internal Bank Ledger: Simulates a real banking core with pre-populated accounts.
 internal_account_registry: Dict[str, float] = {
     "student_sam": 500.00,
     "student_lina": 1200.00,
@@ -50,7 +66,16 @@ def get_user_email(user_id: str) -> Optional[str]:
     return user_email_registry.get(user_id)
 
 def deduct_account_balance(user_id: str, amount: float) -> float:
-    """Deducts the transaction amount from the originator's balance. Raises ValueError if insufficient funds."""
+    """
+    Safely deducts a transaction amount from a user's ledger balance.
+    
+    Validation:
+    - Verifies account existence.
+    - Enforces liquidity check (prevents negative balances).
+    
+    Returns:
+        The updated balance after deduction.
+    """
     if user_id not in internal_account_registry:
         raise ValueError(f"Account '{user_id}' not found in the internal network.")
     if internal_account_registry[user_id] < amount:
@@ -87,9 +112,17 @@ def get_user_transactions(user_id: str) -> List[TransactionRecord]:
     return [t for t in transactions_db.values() if (t.owner_user_id == user_id or t.destination_account_id == user_id) and t.status != TransactionStatusEnum.INITIATED]
 
 def get_all_transactions() -> List[TransactionRecord]:
+    """
+    Retrieves all finalized transactions. 
+    Exclude 'INITIATED' (pending OTP) to keep the audit view clean of incomplete attempts.
+    """
     return [t for t in transactions_db.values() if t.status != TransactionStatusEnum.INITIATED]
 
 def update_transaction_status(transaction_id: str, status: TransactionStatusEnum, admin_id: Optional[str] = None):
+    """
+    Manually overrides a transaction's status.
+    Used for administrative remediation (e.g., manual approval/blocking).
+    """
     if transaction_id in transactions_db:
         old_status = transactions_db[transaction_id].status
         transactions_db[transaction_id].status = status
