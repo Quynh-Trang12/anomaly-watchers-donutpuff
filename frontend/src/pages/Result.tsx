@@ -29,10 +29,16 @@ export default function Result() {
   useEffect(() => {
     const prediction_data = location.state?.prediction as PredictionOutput;
     if (!prediction_data) {
+      // No prediction data available (e.g., on page refresh)
+      // Clear prediction state and navigate away
+      setPrediction(null);
+      setState("INITIAL");
       navigate("/simulate");
       return;
     }
     setPrediction(prediction_data);
+    // Reset state when new prediction data arrives
+    setState("INITIAL");
   }, [location, navigate]);
 
   const handleExportReport = () => {
@@ -78,7 +84,9 @@ export default function Result() {
   const isApproved = (prediction.status === "APPROVED" && state === "INITIAL") || state === "VERIFIED";
   const isBlocked  = (prediction.status === "BLOCKED" && state === "INITIAL")  || state === "REJECTED";
   const isPending  = prediction.status === "PENDING_USER_OTP" && state === "INITIAL";
-  const showOTP    = isPending;
+  // Only show OTP if the transaction is still in PENDING_USER_OTP status on the backend
+  // This prevents OTP from reappearing after page refresh if status has changed
+  const showOTP    = isPending && prediction.status === "PENDING_USER_OTP";
 
   return (
     <Layout>

@@ -24,7 +24,7 @@ interface OTPChallengeProps {
   onFail: () => void;
 }
 
-const TIMER_SECONDS = 30; // 5 minutes for OTP verification
+const TIMER_SECONDS = 10; // 5 minutes for OTP verification
 
 export function OTPChallenge({
   transactionId,
@@ -60,7 +60,15 @@ export function OTPChallenge({
         announceTime(next);
         if (next <= 0) {
           if (timerRef.current) clearInterval(timerRef.current);
-          cancelTransactionOTP(transactionId).catch(() => {}); // Notify backend of expiration
+          // Handle timer expiry: cancel transaction and check if account was frozen
+          cancelTransactionOTP(transactionId)
+            .then((response) => {
+              // Check if account was frozen due to consecutive cancellations
+              if (response.account_frozen) {
+                toast.error("Account frozen suspicious activity");
+              }
+            })
+            .catch(() => {}); // Ignore cancellation errors
           setStatus("failed");
           setErrorMessage("Verification code has expired.");
           onFail();
@@ -140,15 +148,21 @@ export function OTPChallenge({
 
   const handleCancel = async () => {
     try {
-      await cancelTransactionOTP(transactionId);
+      const response = await cancelTransactionOTP(transactionId);
+      // Check if account was frozen due to consecutive cancellations
+      if (response.account_frozen) {
+        toast.error("Account frozen suspicious activity");
+      } else {
+        toast.info("Transaction cancelled.");
+      }
     } catch (e) {
       // Logic proceed to UI update regardless of API success
+      toast.info("Transaction cancelled.");
     }
     isFinished.current = true;
     if (timerRef.current) clearInterval(timerRef.current);
     setStatus("failed");
     setErrorMessage("Transaction cancelled.");
-    toast.info("Transaction cancelled.");
     onFail();
   };
 

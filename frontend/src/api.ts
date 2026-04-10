@@ -105,7 +105,7 @@ export const verifyOTP = async (
 
 export const cancelTransactionOTP = async (
   transactionId: string
-): Promise<{ status: string; message: string }> => {
+): Promise<{ status: string; message: string; account_frozen: boolean }> => {
   const res = await axios.post(
     `${API_BASE_URL}/verify-otp/cancel?transaction_id=${transactionId}`
   );
@@ -173,6 +173,13 @@ export const getUserBalance = async (
   userId: string
 ): Promise<{ user_id: string; balance: number }> => {
   const res = await axios.get(`${API_BASE_URL}/users/${userId}/balance`);
+  return res.data;
+};
+
+export const getUserStatus = async (
+  userId: string
+): Promise<{ user_id: string; is_frozen: boolean }> => {
+  const res = await axios.get(`${API_BASE_URL}/users/${userId}/status`);
   return res.data;
 };
 

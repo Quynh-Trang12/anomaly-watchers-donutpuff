@@ -12,10 +12,10 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Send, Wallet, ArrowRightLeft, Clock, Info } from "lucide-react";
+import { Send, Wallet, ArrowRightLeft, Clock, Info, Lock, CheckCircle } from "lucide-react";
 import { toast } from "sonner";
 import { formatCurrencyToUSD } from "@/lib/utils";
-import { getUserBalance, predictPrimary, TransactionInput } from "@/api";
+import { getUserBalance, getUserStatus, predictPrimary, TransactionInput } from "@/api";
 import { useAuth, MOCK_USERS } from "@/context/AuthContext";
 
 interface TransactionFormProps {
@@ -35,23 +35,28 @@ export function TransactionForm({ onTransactionApproved, refreshTrigger }: Trans
   const [currentBalance, setCurrentBalance] = useState<number>(0);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [step, setStep] = useState<number>(0);
+  const [isAccountFrozen, setIsAccountFrozen] = useState(false);
 
   // Sync sender with auth context
   useEffect(() => {
     setSenderAccount(userId);
   }, [userId]);
 
-  // Fetch balance for selected account
+  // Fetch balance and status for selected account
   useEffect(() => {
-    const fetchBalance = async () => {
+    const fetchBalanceAndStatus = async () => {
       try {
-        const balanceData = await getUserBalance(senderAccount);
+        const [balanceData, statusData] = await Promise.all([
+          getUserBalance(senderAccount),
+          getUserStatus(senderAccount),
+        ]);
         setCurrentBalance(balanceData.balance);
+        setIsAccountFrozen(statusData.is_frozen);
       } catch (error) {
-        console.error("Balance fetch error:", error);
+        console.error("Balance/status fetch error:", error);
       }
     };
-    fetchBalance();
+    fetchBalanceAndStatus();
   }, [senderAccount, refreshTrigger]);
 
   const handleAmountInputChange = (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -236,9 +241,28 @@ export function TransactionForm({ onTransactionApproved, refreshTrigger }: Trans
             <p className="text-primary-foreground/60 text-xs font-bold uppercase mb-1">Total Available Balance</p>
             <h3 className="text-4xl font-black mb-10">{formatCurrencyToUSD(currentBalance)}</h3>
             
-            <div className="flex items-center gap-3">
-              <div className="h-2 w-2 rounded-full bg-green-400 animate-pulse" />
-              <p className="text-sm font-bold truncate opacity-80">{senderAccount}</p>
+            <div className="flex items-center justify-between gap-3">
+              <div className="flex items-center gap-3">
+                <div className={`h-2 w-2 rounded-full animate-pulse ${isAccountFrozen ? 'bg-red-400' : 'bg-green-400'}`} />
+                <p className="text-sm font-bold truncate opacity-80">{senderAccount}</p>
+              </div>
+              <div className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-black uppercase tracking-widest whitespace-nowrap ${
+                isAccountFrozen 
+                  ? 'bg-red-500/20 text-red-100 border border-red-400/30' 
+                  : 'bg-green-500/20 text-green-100 border border-green-400/30'
+              }`}>
+                {isAccountFrozen ? (
+                  <>
+                    <Lock className="h-3 w-3" />
+                    Frozen
+                  </>
+                ) : (
+                  <>
+                    <CheckCircle className="h-3 w-3" />
+                    Active
+                  </>
+                )}
+              </div>
             </div>
           </div>
         </div>

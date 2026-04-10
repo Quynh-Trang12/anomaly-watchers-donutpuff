@@ -309,6 +309,14 @@ async def get_user_balance_api(user_id: str):
         raise HTTPException(status_code=404, detail=f"User '{user_id}' not found.")
     return {"user_id": user_id, "balance": balance}
 
+@app.get("/api/users/{user_id}/status")
+async def get_user_status_api(user_id: str):
+    """Get current account status (active or frozen)."""
+    balance = get_account_balance(user_id)
+    if balance is None:
+        raise HTTPException(status_code=404, detail=f"User '{user_id}' not found.")
+    return {"user_id": user_id, "is_frozen": is_account_frozen(user_id)}
+
 @app.get("/api/transactions/{user_id}", response_model=List[TransactionRecordPublic])
 async def get_transactions_history(user_id: str, requesting_user_id: str = Query("")):
     is_admin_request = requesting_user_id.startswith("admin")
@@ -580,6 +588,7 @@ async def cancel_otp_endpoint(transaction_id: str):
     # A PENDING_USER_OTP transaction is a medium-risk transaction that requires OTP
     # If a user cancels 3 such transactions in a row within the observation window, freeze the account
     cancellation_count = record_cancelled_medium_risk_transaction(transaction.owner_user_id)
+    account_frozen = False
     logger.info(
         "Recorded cancellation for %s. Consecutive medium-risk cancellations: %d/%d",
         transaction.owner_user_id,
@@ -602,8 +611,9 @@ async def cancel_otp_endpoint(transaction_id: str):
             transaction.owner_user_id,
             cancellation_count
         )
+        account_frozen = True
 
-    return {"status": "success", "message": "Transaction successfully cancelled."}
+    return {"status": "success", "message": "Transaction successfully cancelled.", "account_frozen": account_frozen}
 
 @app.get("/api/security/freeze")
 async def security_freeze_endpoint(id: str):
