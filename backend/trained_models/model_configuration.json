@@ -5,8 +5,8 @@
         "validation_sample_size": 200000
     },
     "ml_thresholds": {
-        "block_threshold": 0.5129564462269716,
-        "step_up_threshold": 0.10
+        "block_threshold": 0.80,
+        "step_up_threshold": 0.30
     },
     "business_rules": {
         "large_transfer_limit_amount": 150000.0,

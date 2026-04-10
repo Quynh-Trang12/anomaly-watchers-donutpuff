@@ -52,7 +52,7 @@ export default function Result() {
       `Transaction ID: ${prediction.transaction_id}`,
       `Status: ${prediction.status}`,
       `Risk Level: ${prediction.risk_level}`,
-      `Confidence Level: ${(prediction.probability * 100).toFixed(2)}%`,
+      `Risk Score: ${(prediction.probability * 100).toFixed(2)}%`,
       `Timestamp: ${new Date().toLocaleString()}`,
       "",
       "--- Security Analysis ---",
@@ -180,7 +180,7 @@ export default function Result() {
                 <ShieldCheck className="h-6 w-6" />
               </div>
               <div>
-                <p className="text-sm text-muted-foreground uppercase tracking-wider font-bold">Confidence level</p>
+                <p className="text-sm text-muted-foreground uppercase tracking-wider font-bold">Risk Score</p>
                 <h2 className="text-2xl font-black">{(prediction.probability * 100).toFixed(1)}%</h2>
               </div>
             </div>

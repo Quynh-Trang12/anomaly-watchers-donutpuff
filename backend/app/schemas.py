@@ -50,6 +50,7 @@ class PredictionOutput(BaseModel):
     probability: float = Field(..., ge=0, le=1)
     is_fraud: bool
     risk_level: Literal["Low", "Medium", "High"]
+    risk_display_label: str
     status: TransactionStatusEnum
     explanation: Optional[str] = None
     risk_factors: List[RiskFactor] = Field(default_factory=list)

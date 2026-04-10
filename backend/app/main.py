@@ -193,6 +193,14 @@ def _risk_level(probability: float, block_threshold: float, step_up_threshold: f
         return "Medium"
     return "Low"
 
+def _risk_display_label(risk_level: str) -> str:
+    mapping = {
+        "High": "High Risk (Blocked / Review)",
+        "Medium": "Medium Risk (OTP Required)",
+        "Low": "Low Risk (Approved)"
+    }
+    return mapping.get(risk_level, "Unknown Risk Status")
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # Load Models
@@ -228,12 +236,24 @@ async def lifespan(app: FastAPI):
             }
         }
     
-    # Log loaded thresholds to verify configuration
+    # Safeguard Validation for thresholds
     loaded_thresholds = app.state.system_configuration.get("ml_thresholds", {})
+    block_val = loaded_thresholds.get("block_threshold", 0.70)
+    step_up_val = loaded_thresholds.get("step_up_threshold", 0.40)
+    
+    if step_up_val >= block_val:
+        logger.warning(
+            "CRITICAL CONFIG ERROR: step_up_threshold (%.4f) >= block_threshold (%.4f). "
+            "Enforcing safe defaults (0.40 / 0.70) to prevent security bypass.",
+            step_up_val, block_val
+        )
+        app.state.system_configuration["ml_thresholds"]["block_threshold"] = 0.70
+        app.state.system_configuration["ml_thresholds"]["step_up_threshold"] = 0.40
+    
     logger.info(
-        "Decision thresholds loaded — Block: %.4f, Step-Up: %.4f",
-        loaded_thresholds.get("block_threshold", 0.0),
-        loaded_thresholds.get("step_up_threshold", 0.0)
+        "Decision thresholds initialized — Block: %.4f, Step-Up: %.4f",
+        app.state.system_configuration["ml_thresholds"]["block_threshold"],
+        app.state.system_configuration["ml_thresholds"]["step_up_threshold"]
     )
     
     yield
@@ -570,10 +590,12 @@ async def predict_primary(transaction_input: TransactionInput, background_tasks:
         # Save INITIATED or BLOCKED immediately
         save_transaction(transaction_record_entry)
 
+    risk_level_str = _risk_level(probability_score, block_threshold, step_up_threshold)
     return PredictionOutput(
         probability=probability_score,
         is_fraud=transaction_status == TransactionStatusEnum.BLOCKED,
-        risk_level=_risk_level(probability_score, block_threshold, step_up_threshold),
+        risk_level=risk_level_str,
+        risk_display_label=_risk_display_label(risk_level_str),
         status=transaction_status,
         explanation=operation_explanation,
         risk_factors=risk_factors_list,

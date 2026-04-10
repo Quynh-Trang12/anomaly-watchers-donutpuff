@@ -1,5 +1,5 @@
 import React from "react";
-import { Link, useLocation } from "react-router-dom";
+import { Link, useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "../../context/AuthContext";
 import { Shield, User, LayoutDashboard, History, Activity } from "lucide-react";
 import { Button } from "../ui/button";
@@ -8,6 +8,7 @@ import { cn } from "@/lib/utils";
 export const Navbar: React.FC = () => {
   const { role, setRole, isAdmin } = useAuth();
   const location = useLocation();
+  const navigate = useNavigate();
 
   const isActive = (path: string) => location.pathname === path;
 
@@ -78,7 +79,10 @@ export const Navbar: React.FC = () => {
                 "rounded-full h-8 px-4 gap-2 transition-all hover:bg-transparent",
                 role === "USER" && "bg-primary text-primary-foreground hover:bg-primary"
               )}
-              onClick={() => setRole("USER")}
+              onClick={() => {
+                setRole("USER");
+                navigate("/simulate");
+              }}
             >
               <User className="h-4 w-4" />
               User
@@ -91,7 +95,10 @@ export const Navbar: React.FC = () => {
                 "rounded-full h-8 px-4 gap-2 transition-all hover:bg-transparent",
                 role === "ADMIN" && "bg-primary text-primary-foreground hover:bg-primary"
               )}
-              onClick={() => setRole("ADMIN")}
+              onClick={() => {
+                setRole("ADMIN");
+                navigate("/dashboard");
+              }}
             >
               <Shield className="h-4 w-4" />
               Admin

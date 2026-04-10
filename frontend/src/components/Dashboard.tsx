@@ -166,11 +166,11 @@ const Dashboard: React.FC = () => {
     const isFraudBurst = now % FRAUD_BURST_WINDOW_MS < FRAUD_BURST_DURATION_MS;
 
     if (isFraudBurst && Math.random() > 0.3) {
-      // Fraud-like transaction: CASH OUT draining account
+      // Fraud-like transaction: CASH_OUT draining account
       return {
-        type: "CASH OUT",
+        type: "CASH_OUT",
         amount: 90_000 + Math.random() * 50_000,
-        oldbalanceOrg: 90_000 + Math.random() * 50_000,
+        oldbalanceOrg: 95_000 + Math.random() * 50_000,
         newbalanceOrig: 0,
         oldbalanceDest: 0,
         newbalanceDest: 0,
@@ -182,7 +182,7 @@ const Dashboard: React.FC = () => {
     // Normal transaction
     return {
       type: "PAYMENT",
-      amount: Math.random() * 500,
+      amount: 10 + Math.random() * 500,
       oldbalanceOrg: 5_000 + Math.random() * 1_000,
       newbalanceOrig: 4_500 + Math.random() * 1_000,
       oldbalanceDest: 0,
@@ -240,7 +240,7 @@ const Dashboard: React.FC = () => {
   const distributionData = [
     { name: "Approved", count: stats.approved },
     { name: "Blocked", count: stats.blocked },
-    { name: "Under Review", count: stats.pending },
+    { name: "OTP Required", count: stats.pending },
   ];
 
 
