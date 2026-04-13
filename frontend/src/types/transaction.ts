@@ -7,3 +7,20 @@ export const TRANSACTION_TYPES: { value: TransactionType; label: string; descrip
   { value: "CASH IN", label: "Cash In", description: "Deposit cash via agent" },
   { value: "DEBIT", label: "Debit", description: "Bank fee or debit" },
 ];
+
+export interface Transaction {
+  step: number;
+  type: string;
+  amount: number;
+  nameOrig: string;
+  oldbalanceOrg: number;
+  newbalanceOrig: number;
+  nameDest: string;
+  oldbalanceDest: number;
+  newbalanceDest: number;
+  isFraud: number;
+  isFlaggedFraud: number;
+  riskScore: number;
+  decision: "APPROVED" | "BLOCKED" | "PENDING_USER_OTP" | "CANCELLED";
+  createdAt: string;
+}

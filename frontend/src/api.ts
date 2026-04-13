@@ -18,6 +18,7 @@ export interface TransactionInput {
   newbalanceDest: number;
   user_id: string;
   destination_account_id: string;
+  step: number;
 }
 
 export interface PredictionOutput {
@@ -40,6 +41,7 @@ export interface TransactionRecord {
   probability_score: number;
   timestamp: string;
   risk_factors: RiskFactor[];
+  step: number;
 }
 
 export interface BusinessRules {
@@ -66,6 +68,7 @@ export interface AuditLogEntry {
   admin_id: string;
   details: string;
 }
+
 
 // API functions
 export const predictPrimary = async (data: TransactionInput): Promise<PredictionOutput> => {
@@ -143,3 +146,14 @@ export const getActiveThresholds = async (): Promise<{ block_threshold: number; 
 export const notifyAdminQueueOverflow = async (queue_size: number): Promise<void> => {
   await axios.post(`${API_BASE_URL}/admin/notify/queue_overflow`, { queue_size });
 };
+
+export const getTransactionStatus = async (transactionId: string): Promise<TransactionRecord> => {
+  const response = await axios.get(`${API_BASE_URL}/transactions/${transactionId}`);
+  return response.data;
+};
+
+export const cancelTransactionOTP = async (transactionId: string): Promise<{ status: string; message: string; account_frozen: boolean }> => {
+  const response = await axios.post(`${API_BASE_URL}/verify-otp/cancel?transaction_id=${transactionId}`);
+  return response.data;
+};
+

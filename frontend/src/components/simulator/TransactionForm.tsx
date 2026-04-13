@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import axios from "axios";
 import { useNavigate } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
@@ -12,29 +12,47 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Send, Wallet, ArrowRightLeft, Landmark, CreditCard } from "lucide-react";
+import {
+  Send,
+  Wallet,
+  ArrowRightLeft,
+  Landmark,
+  CreditCard,
+  Activity,
+  Clock,
+  Info,
+} from "lucide-react";
 import { toast } from "sonner";
 import { formatCurrencyToUSD } from "@/lib/utils";
-import { useEffect } from "react";
-import { getUserBalance, predictPrimary, TransactionInput, getUserOwnTransactions } from "@/api";
+import {
+  getUserBalance,
+  predictPrimary,
+  TransactionInput,
+  TransactionRecord,
+  getUserOwnTransactions,
+} from "@/api";
 import { useAuth, MOCK_USERS } from "@/context/AuthContext";
 import { calculateLocalRiskScore } from "@/lib/scoring";
 import { TimeStepBadge } from "./TimeStepBadge";
-import { Activity } from "lucide-react";
 
 interface TransactionFormProps {
   onTransactionApproved?: () => void;
   refreshTrigger?: number;
 }
 
-export function TransactionForm({ onTransactionApproved, refreshTrigger }: TransactionFormProps) {
+export function TransactionForm({
+  onTransactionApproved,
+  refreshTrigger,
+}: TransactionFormProps) {
   const navigate = useNavigate();
   const { userId } = useAuth();
 
   const [type, setType] = useState<string>("TRANSFER");
   const [amountRawValue, setAmountRawValue] = useState<string>("");
   const [amountDisplayValue, setAmountDisplayValue] = useState<string>("");
-  const [senderAccount, setSenderAccount] = useState<string>(userId || MOCK_USERS[0].id);
+  const [senderAccount, setSenderAccount] = useState<string>(
+    userId || MOCK_USERS[0].id,
+  );
   const [receiverAccount, setReceiverAccount] = useState<string>("");
   const [currentBalance, setCurrentBalance] = useState<number>(0);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -45,12 +63,15 @@ export function TransactionForm({ onTransactionApproved, refreshTrigger }: Trans
       try {
         const [balanceData, history] = await Promise.all([
           getUserBalance(senderAccount),
-          getUserOwnTransactions(senderAccount, senderAccount)
+          getUserOwnTransactions(senderAccount, senderAccount),
         ]);
         setCurrentBalance(balanceData.balance);
 
         if (history && history.length > 0) {
-          const maxStep = Math.max(0, ...history.map((t: any) => Number(t.step) || 0));
+          const maxStep = Math.max(
+            0,
+            ...history.map((t: TransactionRecord) => Number(t.step) || 0),
+          );
           setStep(maxStep + 1);
         }
       } catch (error) {
@@ -60,7 +81,9 @@ export function TransactionForm({ onTransactionApproved, refreshTrigger }: Trans
     fetchData();
   }, [senderAccount, refreshTrigger]);
 
-  const handleAmountInputChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+  const handleAmountInputChange = (
+    event: React.ChangeEvent<HTMLInputElement>,
+  ) => {
     // Strip everything except digits and one decimal point
     const raw_input = event.target.value.replace(/[^0-9.]/g, "");
 
@@ -78,15 +101,31 @@ export function TransactionForm({ onTransactionApproved, refreshTrigger }: Trans
     }
 
     const integer_part = decimal_parts[0];
-    const formatted_integer = integer_part ? parseInt(integer_part, 10).toLocaleString("en-US") : "0";
-    const decimal_suffix = decimal_parts.length === 2 ? "." + decimal_parts[1] : "";
+    const formatted_integer = integer_part
+      ? parseInt(integer_part, 10).toLocaleString("en-US")
+      : "0";
+    const decimal_suffix =
+      decimal_parts.length === 2 ? "." + decimal_parts[1] : "";
     setAmountDisplayValue(formatted_integer + decimal_suffix);
   };
 
   const parsed_amount_for_preview = parseFloat(amountRawValue) || 0;
   const projected_balance = currentBalance - parsed_amount_for_preview;
   const is_insufficient_funds = parsed_amount_for_preview > currentBalance;
-  const is_low_balance_warning = projected_balance < 1000 && projected_balance >= 0;
+  const is_low_balance_warning =
+    projected_balance < 1000 && projected_balance >= 0;
+
+  // Temporal calculations for simulation UI
+  const stepDay = Math.floor(step / 24) + 1;
+  const stepHourOfDay = step % 24;
+  const amPm = stepHourOfDay >= 12 ? "PM" : "AM";
+  const displayHour =
+    stepHourOfDay === 0
+      ? 12
+      : stepHourOfDay > 12
+        ? stepHourOfDay - 12
+        : stepHourOfDay;
+  const timeLabel = `${String(displayHour).padStart(2, "0")}:00 ${amPm}`;
 
   const validate_transaction_form = (): string | null => {
     const parsed_amount = parseFloat(amountRawValue);
@@ -145,14 +184,14 @@ export function TransactionForm({ onTransactionApproved, refreshTrigger }: Trans
         newbalanceDest: parsed_amount,
         user_id: senderAccount,
         destination_account_id: receiverAccount,
-        step: step
+        step: step,
       };
       const prediction_result = await predictPrimary(transaction_payload);
 
       if (prediction_result.status === "APPROVED") {
         onTransactionApproved?.();
         // Optimistically increment step if refresh is delayed
-        setStep(prev => prev + 1);
+        setStep((prev) => prev + 1);
       }
 
       // Navigate to results with the prediction data
@@ -164,9 +203,10 @@ export function TransactionForm({ onTransactionApproved, refreshTrigger }: Trans
             amount: parsed_amount,
             sender: senderAccount, // Explicitly pass the selected sender for finalization consistency
             targetAccount: receiverAccount,
-            oldbalanceOrig: currentBalance
-          }
-        }
+            oldbalanceOrig: currentBalance,
+            step: step,
+          },
+        },
       });
     } catch (submission_error: unknown) {
       if (axios.isAxiosError(submission_error)) {
@@ -181,9 +221,11 @@ export function TransactionForm({ onTransactionApproved, refreshTrigger }: Trans
             newbalanceDest: parsed_amount,
             user_id: senderAccount,
             destination_account_id: receiverAccount,
-            step
+            step,
           });
-          toast.warning("AI backend unavailable - using local demo risk rules.");
+          toast.warning(
+            "AI backend unavailable - using local demo risk rules.",
+          );
 
           navigate("/result", {
             state: {
@@ -193,25 +235,35 @@ export function TransactionForm({ onTransactionApproved, refreshTrigger }: Trans
                 type,
                 amount: parsed_amount,
                 targetAccount: receiverAccount,
-                oldbalanceOrig: currentBalance
-              }
-            }
+                oldbalanceOrig: currentBalance,
+              },
+            },
           });
           return;
         }
 
         const error_detail = submission_error.response?.data?.detail;
         if (error_detail?.includes("not found in internal network")) {
-          toast.error("Recipient account does not exist in our network. Please verify the account ID.");
+          toast.error(
+            "Recipient account does not exist in our network. Please verify the account ID.",
+          );
         } else if (submission_error.response?.status === 422) {
-          toast.error("Transaction data is invalid. Please check your input values.");
+          toast.error(
+            "Transaction data is invalid. Please check your input values.",
+          );
         } else if (submission_error.response?.status === 503) {
-          toast.error("Fraud detection service is temporarily unavailable. Please try again.");
+          toast.error(
+            "Fraud detection service is temporarily unavailable. Please try again.",
+          );
         } else {
-          toast.error(`Transaction failed: ${error_detail || "An unexpected error occurred."}`);
+          toast.error(
+            `Transaction failed: ${error_detail || "An unexpected error occurred."}`,
+          );
         }
       } else {
-        toast.error("Cannot connect to the AnomalyWatchers server. Is the backend running?");
+        toast.error(
+          "Cannot connect to the AnomalyWatchers server. Is the backend running?",
+        );
       }
     } finally {
       setIsSubmitting(false);
@@ -248,7 +300,10 @@ export function TransactionForm({ onTransactionApproved, refreshTrigger }: Trans
 
             <div className="space-y-2">
               <Label>Receiver Account</Label>
-              <Select value={receiverAccount} onValueChange={setReceiverAccount}>
+              <Select
+                value={receiverAccount}
+                onValueChange={setReceiverAccount}
+              >
                 <SelectTrigger className="h-12 rounded-xl">
                   <SelectValue placeholder="Select receiver..." />
                 </SelectTrigger>
@@ -277,10 +332,18 @@ export function TransactionForm({ onTransactionApproved, refreshTrigger }: Trans
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="TRANSFER">P2P Transfer (TRANSFER)</SelectItem>
-                  <SelectItem value="CASH_OUT">Cash Withdrawal (CASH_OUT)</SelectItem>
-                  <SelectItem value="CASH_IN">Cash Deposit (CASH_IN)</SelectItem>
-                  <SelectItem value="PAYMENT">Merchant Payment (PAYMENT)</SelectItem>
+                  <SelectItem value="TRANSFER">
+                    P2P Transfer (TRANSFER)
+                  </SelectItem>
+                  <SelectItem value="CASH_OUT">
+                    Cash Withdrawal (CASH_OUT)
+                  </SelectItem>
+                  <SelectItem value="CASH_IN">
+                    Cash Deposit (CASH_IN)
+                  </SelectItem>
+                  <SelectItem value="PAYMENT">
+                    Merchant Payment (PAYMENT)
+                  </SelectItem>
                   <SelectItem value="DEBIT">Bank Debit (DEBIT)</SelectItem>
                 </SelectContent>
               </Select>
@@ -289,14 +352,16 @@ export function TransactionForm({ onTransactionApproved, refreshTrigger }: Trans
             <div className="space-y-2">
               <Label>Amount (USD)</Label>
               <div className="relative">
-                <span className="absolute left-4 top-1/2 -translate-y-1/2 text-xl font-bold text-muted-foreground">$</span>
+                <span className="absolute left-4 top-1/2 -translate-y-1/2 text-xl font-bold text-muted-foreground">
+                  $
+                </span>
                 <input
                   type="text"
                   inputMode="decimal"
                   placeholder="0.00"
                   value={amountDisplayValue}
                   onChange={handleAmountInputChange}
-                  className={`h-12 pl-10 text-xl font-bold rounded-xl bg-muted/30 w-full border px-3 focus-visible:ring-2 focus-visible:ring-ring ${is_insufficient_funds ? 'border-danger focus-visible:ring-danger' : 'border-input'}`}
+                  className={`h-12 pl-10 text-xl font-bold rounded-xl bg-muted/30 w-full border px-3 focus-visible:ring-2 focus-visible:ring-ring ${is_insufficient_funds ? "border-danger focus-visible:ring-danger" : "border-input"}`}
                   required
                   aria-label="Transaction amount in USD"
                 />
@@ -308,13 +373,25 @@ export function TransactionForm({ onTransactionApproved, refreshTrigger }: Trans
           <div className="mt-4 p-4 rounded-xl bg-muted/20 border border-dashed text-sm">
             <div className="flex justify-between items-center mb-1">
               <span className="text-muted-foreground">Original Balance:</span>
-              <span className="font-mono">{formatCurrencyToUSD(currentBalance)}</span>
+              <span className="font-mono">
+                {formatCurrencyToUSD(currentBalance)}
+              </span>
             </div>
             <div className="flex justify-between items-center font-bold">
-              <span className={is_insufficient_funds ? "text-danger" : is_low_balance_warning ? "text-warning" : "text-success"}>
+              <span
+                className={
+                  is_insufficient_funds
+                    ? "text-danger"
+                    : is_low_balance_warning
+                      ? "text-warning"
+                      : "text-success"
+                }
+              >
                 Projected Balance:
               </span>
-              <span className={`font-mono ${is_insufficient_funds ? "text-danger" : is_low_balance_warning ? "text-warning" : "text-success"}`}>
+              <span
+                className={`font-mono ${is_insufficient_funds ? "text-danger" : is_low_balance_warning ? "text-warning" : "text-success"}`}
+              >
                 {formatCurrencyToUSD(projected_balance)}
               </span>
             </div>
@@ -326,7 +403,8 @@ export function TransactionForm({ onTransactionApproved, refreshTrigger }: Trans
                   animate={{ opacity: 1, y: 0 }}
                   className="text-xs font-bold text-danger mt-2"
                 >
-                  This amount exceeds your available balance of {formatCurrencyToUSD(currentBalance)}.
+                  This amount exceeds your available balance of{" "}
+                  {formatCurrencyToUSD(currentBalance)}.
                 </motion.p>
               )}
               {!is_insufficient_funds && is_low_balance_warning && (
@@ -335,14 +413,15 @@ export function TransactionForm({ onTransactionApproved, refreshTrigger }: Trans
                   animate={{ opacity: 1, y: 0 }}
                   className="text-xs font-bold text-warning mt-2"
                 >
-                  Warning: This will leave you with a low balance (under $1,000.00).
+                  Warning: This will leave you with a low balance (under
+                  $1,000.00).
                 </motion.p>
               )}
             </AnimatePresence>
           </div>
 
           {/* Simulation Context Section */}
-          <div className="bg-muted/30 border border-dashed rounded-3xl p-6 space-y-6">
+          {/* <div className="bg-muted/30 border border-dashed rounded-3xl p-6 space-y-6">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
               <h3 className="text-sm font-bold flex items-center gap-2 text-muted-foreground">
                 <Activity className="h-4 w-4" />
@@ -352,7 +431,10 @@ export function TransactionForm({ onTransactionApproved, refreshTrigger }: Trans
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="step-input" className="text-xs font-black uppercase tracking-widest text-muted-foreground/70">
+              <Label
+                htmlFor="step-input"
+                className="text-xs font-black uppercase tracking-widest text-muted-foreground/70"
+              >
                 Step Input
               </Label>
               <Input
@@ -373,17 +455,24 @@ export function TransactionForm({ onTransactionApproved, refreshTrigger }: Trans
                 placeholder="Enter simulation step..."
               />
               <p className="text-[10px] text-muted-foreground italic">
-                The step drives cyclical time encoding in the ML model. Next default: max(step) + 1.
+                The step drives cyclical time encoding in the ML model. Next
+                default: max(step) + 1.
               </p>
             </div>
-          </div>
+          </div> */}
 
           <Button
             type="submit"
             disabled={isSubmitting}
             className="w-full h-16 rounded-2xl text-lg font-bold gap-3 shadow-lg shadow-primary/20 transition-all hover:scale-[1.01] active:scale-[0.99]"
           >
-            {isSubmitting ? "Securing Transaction..." : <><Send className="h-5 w-5" /> Execute Transfer</>}
+            {isSubmitting ? (
+              "Securing Transaction..."
+            ) : (
+              <>
+                <Send className="h-5 w-5" /> Execute Transfer
+              </>
+            )}
           </Button>
         </form>
       </div>
@@ -395,21 +484,28 @@ export function TransactionForm({ onTransactionApproved, refreshTrigger }: Trans
             <Wallet className="h-40 w-40" />
           </div>
           <div className="relative">
-            <p className="text-primary-foreground/70 text-sm font-medium mb-1 uppercase tracking-wider">Current Balance</p>
-            <h3 className="text-4xl font-black mb-6">{formatCurrencyToUSD(currentBalance)}</h3>
+            <p className="text-primary-foreground/70 text-sm font-medium mb-1 uppercase tracking-wider">
+              Current Balance
+            </p>
+            <h3 className="text-4xl font-black mb-6">
+              {formatCurrencyToUSD(currentBalance)}
+            </h3>
 
             <div className="flex items-center gap-4 text-sm font-medium">
               <div className="bg-white/20 px-3 py-1 rounded-full flex items-center gap-2">
-                <div className="h-2 w-2 rounded-full bg-green-400 animate-pulse" /> Active
+                <div className="h-2 w-2 rounded-full bg-green-400 animate-pulse" />{" "}
+                Active
               </div>
               <p className="text-primary-foreground/60 font-mono">
-                {MOCK_USERS.find(u => u.id === senderAccount)?.name || senderAccount} ({senderAccount})
+                {MOCK_USERS.find((u) => u.id === senderAccount)?.name ||
+                  senderAccount}{" "}
+                ({senderAccount})
               </p>
             </div>
           </div>
         </div>
 
-        <div className="bg-card border rounded-3xl p-6">
+        {/* <div className="bg-card border rounded-3xl p-6">
           <h4 className="font-bold mb-4 flex items-center gap-2">
             <Landmark className="h-4 w-4" /> Security Status
           </h4>
@@ -420,10 +516,65 @@ export function TransactionForm({ onTransactionApproved, refreshTrigger }: Trans
               </div>
               <div>
                 <p className="text-sm font-bold">2FA Enabled</p>
-                <p className="text-xs text-muted-foreground">Biometric primary authentication</p>
+                <p className="text-xs text-muted-foreground">
+                  Biometric primary authentication
+                </p>
               </div>
             </div>
           </div>
+        </div> */}
+
+        {/* Hour of Day Control */}
+        <div className="bg-card border rounded-3xl p-6 shadow-sm">
+          <div className="flex items-center gap-2 mb-4">
+            <Clock className="h-4 w-4 text-primary" />
+            <h4 className="font-bold text-sm uppercase tracking-wider">
+              Temporal Simulation
+            </h4>
+          </div>
+          <p className="text-xs text-muted-foreground mb-6 leading-relaxed">
+            The detection engine performs time-of-day behavioral checks. Adjust
+            the temporal step (0-743) to demonstrate different risk profiles.
+          </p>
+          <div className="space-y-4">
+            <div className="flex justify-between items-end mb-2">
+              <span className="text-[10px] font-black uppercase text-muted-foreground">
+                Step Selection
+              </span>
+              <span className="font-mono text-xs font-bold text-primary">
+                ID: {step}
+              </span>
+            </div>
+            <input
+              type="range"
+              min={0}
+              max={743}
+              value={step}
+              onChange={(e) => setStep(parseInt(e.target.value))}
+              className="w-full h-2 bg-muted rounded-lg appearance-none cursor-pointer accent-primary"
+            />
+            <div className="p-3 bg-muted/30 rounded-xl border flex flex-col items-center">
+              <span className="text-[10px] uppercase font-black text-muted-foreground mb-1">
+                Clock Simulation
+              </span>
+              <span className="text-lg font-black text-primary">
+                {timeLabel}
+              </span>
+              <span className="text-[10px] font-bold text-muted-foreground">
+                Cycle Day {stepDay}
+              </span>
+            </div>
+          </div>
+        </div>
+
+        {/* Info Card */}
+        <div className="bg-primary/5 border border-primary/20 rounded-3xl p-6 flex gap-4">
+          <Info className="h-6 w-6 text-primary shrink-0" />
+          <p className="text-xs text-muted-foreground leading-relaxed">
+            Every transaction is evaluated across 12 behavioral dimensions using
+            the Donutpuff-RF ensemble model. High-risk profiles may trigger
+            Step-Up authentication.
+          </p>
         </div>
       </div>
     </div>

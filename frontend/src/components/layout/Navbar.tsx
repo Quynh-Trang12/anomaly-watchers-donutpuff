@@ -1,108 +1,181 @@
 import React from "react";
-import { Link, useLocation, useNavigate } from "react-router-dom";
-import { useAuth } from "../../context/AuthContext";
-import { Shield, User, LayoutDashboard, History, Activity } from "lucide-react";
+import { Link, useLocation } from "react-router-dom";
+import { useAuth, MOCK_USERS } from "../../context/AuthContext";
+import { useTheme } from "../../context/ThemeContext";
+import {
+  Shield,
+  User,
+  Sun,
+  Moon,
+  LayoutDashboard,
+  History,
+  Activity,
+  LogOut,
+  Info,
+} from "lucide-react";
 import { Button } from "../ui/button";
-import { cn } from "@/lib/utils";
 
 export const Navbar: React.FC = () => {
-  const { role, setRole, isAdmin } = useAuth();
+  const { role, setRole, userId, setUserId, setHasActivelySelectedUser } =
+    useAuth();
+  const { theme, toggleTheme } = useTheme();
   const location = useLocation();
-  const navigate = useNavigate();
+
+  const currentUser = MOCK_USERS.find((u) => u.id === userId);
+  const userDisplayName = currentUser ? currentUser.name : userId;
 
   const isActive = (path: string) => location.pathname === path;
 
-  const NavItem = ({ to, icon: Icon, label, show }: { to: string, icon: any, label: string, show: boolean }) => {
-    if (!show) return null;
-    
-    const active = isActive(to);
-    
-    return (
-      <Button 
-        variant="ghost" 
-        asChild 
-        className={cn(
-          "gap-2 font-medium transition-colors hover:bg-transparent cursor-pointer",
-          active ? "bg-primary text-primary-foreground hover:bg-primary" : "text-foreground"
-        )}
-      >
-        <Link to={to}>
-          <Icon className="h-4 w-4" />
-          {label}
-        </Link>
-      </Button>
-    );
-  };
-
   return (
-    <nav className="border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 sticky top-0 z-50">
-      <div className="container flex h-16 items-center justify-between">
+    <nav className="border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 sticky top-0 z-50 shadow-sm">
+      <div className="w-full max-w-[1600px] mx-auto px-4 sm:px-8 flex h-16 items-center justify-between">
         <div className="flex items-center gap-6">
-          <Link to="/" className="flex items-center gap-2">
-            <div className="bg-primary p-1.5 rounded-lg">
+          <Link to="/" className="flex items-center gap-2 group transition-all">
+            <div className="bg-primary p-1.5 rounded-lg group-hover:rotate-12 transition-transform">
               <Shield className="h-6 w-6 text-primary-foreground" />
             </div>
-            <span className="font-bold text-xl tracking-tight hidden sm:inline-block">
-              Anomaly<span className="text-primary">Watchers</span>
+            <span className="font-black text-xl tracking-tight hidden sm:inline-block">
+              Anomaly<span className="text-primary italic">Watchers</span>
             </span>
           </Link>
 
+          {/* ─── Role-Based Navigation ──────────────────────────────────────── */}
           <div className="hidden md:flex items-center gap-1">
-            <NavItem 
-              to="/dashboard" 
-              icon={Activity} 
-              label="Monitor" 
-              show={isAdmin} 
-            />
-            <NavItem 
-              to="/simulate" 
-              icon={LayoutDashboard} 
-              label="Wallet" 
-              show={!isAdmin} 
-            />
-            <NavItem 
-              to="/history" 
-              icon={History} 
-              label="History" 
-              show={true} 
-            />
+            {role === "USER" ? (
+              <>
+                <Button
+                  variant={isActive("/simulate") ? "secondary" : "ghost"}
+                  asChild
+                  className="gap-2 font-bold rounded-xl"
+                >
+                  <Link to="/simulate">
+                    <LayoutDashboard className="h-4 w-4" />
+                    Wallet
+                  </Link>
+                </Button>
+                <Button
+                  variant={isActive("/history") ? "secondary" : "ghost"}
+                  asChild
+                  className="gap-2 font-bold rounded-xl"
+                >
+                  <Link to="/history">
+                    <History className="h-4 w-4" />
+                    History
+                  </Link>
+                </Button>
+              </>
+            ) : (
+              <>
+                <Button
+                  variant={isActive("/dashboard") ? "secondary" : "ghost"}
+                  asChild
+                  className="gap-2 font-bold rounded-xl"
+                >
+                  <Link to="/dashboard">
+                    <Activity className="h-4 w-4" />
+                    Dashboard
+                  </Link>
+                </Button>
+                {/* <Button
+                  variant={isActive("/admin") ? "secondary" : "ghost"}
+                  asChild
+                  className="gap-2 font-bold rounded-xl"
+                >
+                  <Link to="/admin">
+                    <Shield className="h-4 w-4" />
+                    Control
+                  </Link>
+                </Button> */}
+                <Button
+                  variant={isActive("/history") ? "secondary" : "ghost"}
+                  asChild
+                  className="gap-2 font-bold rounded-xl"
+                >
+                  <Link to="/history">
+                    <History className="h-4 w-4" />
+                    Transaction Logs
+                  </Link>
+                </Button>
+              </>
+            )}
+            <Button
+              variant={isActive("/about") ? "secondary" : "ghost"}
+              asChild
+              className="gap-2 font-bold rounded-xl"
+            >
+              <Link to="/about">
+                <Info className="h-4 w-4" />
+                About
+              </Link>
+            </Button>
           </div>
         </div>
 
-        <div className="flex items-center gap-4">
-          {/* DEMO-ONLY ROLE SWITCHER: Preserved for presentation convenience */}
-          <div className="flex items-center bg-muted p-1 rounded-full border shadow-sm" title="Demo Role Toggle">
+        <div className="flex items-center gap-3">
+          {/* Role Switcher */}
+          <div className="hidden sm:flex items-center bg-muted/50 border p-1 rounded-xl gap-1">
             <Button
               size="sm"
               variant={role === "USER" ? "default" : "ghost"}
-              className={cn(
-                "rounded-full h-8 px-4 gap-2 transition-all hover:bg-transparent",
-                role === "USER" && "bg-primary text-primary-foreground hover:bg-primary"
-              )}
+              className="rounded-lg h-8 px-4 font-bold transition-all"
               onClick={() => {
                 setRole("USER");
-                navigate("/simulate");
+                setUserId("user_1");
+                setHasActivelySelectedUser(false);
               }}
             >
-              <User className="h-4 w-4" />
-              User
+              Customer
             </Button>
-
             <Button
               size="sm"
               variant={role === "ADMIN" ? "default" : "ghost"}
-              className={cn(
-                "rounded-full h-8 px-4 gap-2 transition-all hover:bg-transparent",
-                role === "ADMIN" && "bg-primary text-primary-foreground hover:bg-primary"
-              )}
+              className="rounded-lg h-8 px-4 font-bold transition-all"
               onClick={() => {
                 setRole("ADMIN");
-                navigate("/dashboard");
+                setUserId("admin_1");
+                setHasActivelySelectedUser(true);
               }}
             >
-              <Shield className="h-4 w-4" />
               Admin
             </Button>
+          </div>
+
+          <Button
+            variant="outline"
+            size="icon"
+            className="rounded-xl border-2 hover:bg-accent"
+            onClick={toggleTheme}
+            aria-label="Toggle Theme"
+          >
+            {theme === "dark" ? (
+              <Sun className="h-4 w-4" />
+            ) : (
+              <Moon className="h-4 w-4" />
+            )}
+          </Button>
+
+          <div className="flex items-center gap-2 ml-1 pl-3 border-l">
+            <div className="flex flex-col items-end hidden xl:flex">
+              <span className="text-[9px] uppercase font-black text-muted-foreground tracking-widest leading-none">
+                {role === "ADMIN" ? "Security Operator" : "Active Account"}
+              </span>
+              <span className="text-xs font-bold truncate max-w-[100px] leading-tight">
+                {role === "ADMIN" ? "System Admin" : userDisplayName}
+              </span>
+            </div>
+            <div
+              className={`h-9 w-9 rounded-full flex items-center justify-center border-2 transition-all shrink-0 ${
+                role === "ADMIN"
+                  ? "bg-primary text-primary-foreground border-primary shadow-lg shadow-primary/20"
+                  : "bg-primary/10 text-primary border-primary/20"
+              }`}
+            >
+              {role === "ADMIN" ? (
+                <Shield className="h-4 w-4" />
+              ) : (
+                <User className="h-4 w-4" />
+              )}
+            </div>
           </div>
         </div>
       </div>

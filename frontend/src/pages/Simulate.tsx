@@ -1,9 +1,16 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Layout } from "@/components/layout/Layout";
 import { TransactionForm } from "@/components/simulator/TransactionForm";
+import { useAuth } from "@/context/AuthContext";
 
 export default function Simulate() {
   const [refreshTrigger, setRefreshTrigger] = useState<number>(0);
+  const { setHasActivelySelectedUser } = useAuth();
+
+  useEffect(() => {
+    // When entering the Wallet page, mark the default user as actively selected
+    setHasActivelySelectedUser(true);
+  }, [setHasActivelySelectedUser]);
 
   return (
     <Layout>
@@ -11,16 +18,17 @@ export default function Simulate() {
         <div className="max-w-6xl mx-auto">
           <header className="mb-8">
             <h1 className="text-3xl font-black tracking-tight">
-              Elite Digital Wallet
+              Digital Wallet
             </h1>
             <p className="text-muted-foreground mt-2">
-              Experience the next generation of secure, AI-powered financial transfers. 
-              Our system analyzes every transaction in real-time to ensure your funds remain safe.
+              Experience the next generation of secure, AI-powered financial
+              transfers. Our system analyzes every transaction in real-time to
+              ensure your funds remain safe.
             </p>
           </header>
 
-          <TransactionForm 
-            onTransactionApproved={() => setRefreshTrigger(prev => prev + 1)} 
+          <TransactionForm
+            onTransactionApproved={() => setRefreshTrigger((prev) => prev + 1)}
             refreshTrigger={refreshTrigger}
           />
         </div>

@@ -60,10 +60,20 @@
     --sidebar-ring: 175 85% 25%;
 
     /* Custom gradients & shadows */
-    --gradient-primary: linear-gradient(135deg, hsl(175 85% 25%), hsl(175 75% 35%));
-    --gradient-hero: linear-gradient(180deg, hsl(210 20% 98%) 0%, hsl(175 40% 97%) 100%);
-    --shadow-card: 0 1px 3px 0 rgba(0, 0, 0, 0.06), 0 1px 2px -1px rgba(0, 0, 0, 0.06);
-    --shadow-elevated: 0 4px 12px -2px rgba(0, 0, 0, 0.08), 0 2px 6px -2px rgba(0, 0, 0, 0.04);
+    --gradient-primary: linear-gradient(
+      135deg,
+      hsl(175 85% 25%),
+      hsl(175 75% 35%)
+    );
+    --gradient-hero: linear-gradient(
+      180deg,
+      hsl(210 20% 98%) 0%,
+      hsl(175 40% 97%) 100%
+    );
+    --shadow-card:
+      0 1px 3px 0 rgba(0, 0, 0, 0.06), 0 1px 2px -1px rgba(0, 0, 0, 0.06);
+    --shadow-elevated:
+      0 4px 12px -2px rgba(0, 0, 0, 0.08), 0 2px 6px -2px rgba(0, 0, 0, 0.04);
   }
 
   .dark {
@@ -115,6 +125,22 @@
     --sidebar-accent-foreground: 175 70% 85%;
     --sidebar-border: 215 20% 22%;
     --sidebar-ring: 175 70% 45%;
+
+    /* Dark mode gradients & shadows */
+    --gradient-primary: linear-gradient(
+      135deg,
+      hsl(175 70% 45%),
+      hsl(175 60% 55%)
+    );
+    --gradient-hero: linear-gradient(
+      180deg,
+      hsl(215 25% 10%) 0%,
+      hsl(175 30% 12%) 100%
+    );
+    --shadow-card:
+      0 1px 3px 0 rgba(0, 0, 0, 0.2), 0 1px 2px -1px rgba(0, 0, 0, 0.15);
+    --shadow-elevated:
+      0 4px 12px -2px rgba(0, 0, 0, 0.3), 0 2px 6px -2px rgba(0, 0, 0, 0.2);
   }
 }
 
@@ -128,7 +154,12 @@
     font-feature-settings: "cv02", "cv03", "cv04", "cv11";
   }
 
-  h1, h2, h3, h4, h5, h6 {
+  h1,
+  h2,
+  h3,
+  h4,
+  h5,
+  h6 {
     @apply font-semibold tracking-tight text-foreground;
   }
 
@@ -139,7 +170,9 @@
 
   /* Reduced motion */
   @media (prefers-reduced-motion: reduce) {
-    *, *::before, *::after {
+    *,
+    *::before,
+    *::after {
       animation-duration: 0.01ms !important;
       animation-iteration-count: 1 !important;
       transition-duration: 0.01ms !important;
@@ -277,7 +310,8 @@
   }
 
   @keyframes pulseSoft {
-    0%, 100% {
+    0%,
+    100% {
       opacity: 1;
     }
     50% {

@@ -79,6 +79,7 @@ class TransactionRecord(BaseModel):
     timestamp: datetime
     risk_factors: List[RiskFactor]
     otp_code: Optional[str] = None  # Stores OTP for PENDING_USER_OTP transactions
+    step: int = 1
 
 
 class BusinessRulesUpdate(BaseModel):
@@ -108,3 +109,4 @@ class HealthResponse(BaseModel):
 
 class QueueOverflowNotify(BaseModel):
     queue_size: int
+
