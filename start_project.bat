@@ -11,7 +11,7 @@ start "BACKEND" cmd /k "call start_backend.bat"
 
 :: Start Frontend
 echo [*] Starting React Frontend...
-start "FRONTEND" cmd /k "title FRONTEND SERVER - DO NOT CLOSE THIS WINDOW && cd frontend && npm install && npm run dev"
+start "FRONTEND" /D "%~dp0frontend" cmd /k "title FRONTEND SERVER - DO NOT CLOSE THIS WINDOW && if exist node_modules\.vite rmdir /s /q node_modules\.vite && npm install && npm run dev -- --force"
 
 :: Start Mailpit Email Server
 echo [*] Starting Mailpit local email server...
