@@ -75,7 +75,7 @@ export default function Landing() {
         <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[1000px] h-[600px] bg-primary/5 blur-[120px] rounded-full pointer-events-none" />
         
         <div className="container relative z-10">
-          <div className="flex flex-col lg:flex-row items-center gap-16 lg:gap-24">
+          {/* <div className="flex flex-col lg:flex-row items-center gap-16 lg:gap-24"> */}
             <motion.div 
               initial={{ opacity: 0, x: -50 }}
               animate={{ opacity: 1, x: 0 }}
@@ -122,7 +122,7 @@ export default function Landing() {
               transition={{ duration: 1 }}
               className="flex-1 relative hidden lg:block"
             >
-               <div className="relative z-10 p-2 bg-gradient-to-br from-primary/20 to-transparent rounded-[3rem] border border-white/10 backdrop-blur-sm">
+               {/* <div className="relative z-10 p-2 bg-gradient-to-br from-primary/20 to-transparent rounded-[3rem] border border-white/10 backdrop-blur-sm">
                   <div className="bg-background rounded-[2.5rem] p-10 shadow-2xl overflow-hidden relative group">
                     <div className="absolute top-0 right-0 p-8 opacity-5 group-hover:rotate-45 transition-transform duration-1000">
                       <Shield className="h-64 w-64" />
@@ -143,10 +143,10 @@ export default function Landing() {
                        </div>
                     </div>
                   </div>
-               </div>
+               </div> */}
             </motion.div>
           </div>
-        </div>
+        {/* </div> */}
       </section>
 
       {/* ─── Visionary Step Section ───────────────────────────────────── */}
