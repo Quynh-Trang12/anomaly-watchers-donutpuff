@@ -271,12 +271,12 @@ export function TransactionForm({
   };
 
   return (
-    <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+    <div className="flex flex-col lg:flex-row gap-8 items-start">
       {/* Transaction Setup */}
-      <div className="lg:col-span-2 bg-card border rounded-3xl p-8 shadow-sm">
+      <div className="flex-1 min-w-0 bg-card border rounded-3xl p-8 shadow-sm">
         <h2 className="text-2xl font-bold mb-6 flex items-center gap-2">
           <ArrowRightLeft className="h-6 w-6 text-primary" />
-          Seamless Money Transfer
+          Transfer Money
         </h2>
 
         <form onSubmit={handleSubmit} className="space-y-6">
@@ -478,7 +478,7 @@ export function TransactionForm({
       </div>
 
       {/* Wallet Info Column */}
-      <div className="space-y-6">
+      <div className="w-full lg:w-80 shrink-0 space-y-6">
         <div className="bg-primary text-primary-foreground rounded-3xl p-8 shadow-xl relative overflow-hidden group">
           <div className="absolute -right-8 -top-8 opacity-10 group-hover:scale-110 transition-transform duration-500">
             <Wallet className="h-40 w-40" />

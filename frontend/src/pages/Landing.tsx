@@ -75,7 +75,7 @@ export default function Landing() {
         <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[1000px] h-[600px] bg-primary/5 blur-[120px] rounded-full pointer-events-none" />
         
         <div className="container relative z-10">
-          {/* <div className="flex flex-col lg:flex-row items-center gap-16 lg:gap-24"> */}
+          <div className="flex flex-col md:flex-row items-center gap-18 md:gap-22">
             <motion.div 
               initial={{ opacity: 0, x: -50 }}
               animate={{ opacity: 1, x: 0 }}
@@ -83,12 +83,12 @@ export default function Landing() {
               className="flex-1 text-left"
             >
               <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-primary/10 border border-primary/20 text-primary text-[10px] font-black uppercase tracking-widest mb-8">
-                <Radar className="h-3 w-3 animate-pulse" /> Platform V4.0 Enterprise
+                <Radar className="h-3 w-3 animate-pulse" /> Platform Enterprise
               </div>
               
-              <h1 className="text-6xl lg:text-7xl font-black tracking-tighter leading-[0.9] mb-8">
-                See the <span className="text-primary italic">Invisible.</span><br/>
-                Block the <span className="underline decoration-primary/30 decoration-8 underline-offset-8">Impossible.</span>
+              <h1 className="text-6xl font-black tracking-tighter leading-[0.9] mb-8">
+                See the <span className="text-primary italic">Invisible</span><br/>
+                Block the <span className="underline decoration-primary/30 decoration-8 underline-offset-8">Impossible</span>
               </h1>
               
               <p className="text-xl text-muted-foreground font-medium mb-10 max-w-xl leading-relaxed">
@@ -120,33 +120,109 @@ export default function Landing() {
               initial={{ opacity: 0, scale: 0.8 }}
               animate={{ opacity: 1, scale: 1 }}
               transition={{ duration: 1 }}
-              className="flex-1 relative hidden lg:block"
+              className="flex-1 relative hidden md:flex items-center justify-center"
             >
-               {/* <div className="relative z-10 p-2 bg-gradient-to-br from-primary/20 to-transparent rounded-[3rem] border border-white/10 backdrop-blur-sm">
-                  <div className="bg-background rounded-[2.5rem] p-10 shadow-2xl overflow-hidden relative group">
-                    <div className="absolute top-0 right-0 p-8 opacity-5 group-hover:rotate-45 transition-transform duration-1000">
-                      <Shield className="h-64 w-64" />
+              {/* Animated Real-Time Monitoring Hub */}
+              <div className="relative w-full h-96 flex items-center justify-center">
+                {/* Outer Glow Ring */}
+                <motion.div
+                  animate={{ rotate: 360 }}
+                  transition={{ duration: 20, repeat: Infinity, ease: "linear" }}
+                  className="absolute inset-0 rounded-full border border-primary/20 shadow-lg shadow-primary/10"
+                />
+                
+                {/* Middle Pulse Ring */}
+                <motion.div
+                  animate={{ scale: [1, 1.1, 1], opacity: [0.5, 0.3, 0.5] }}
+                  transition={{ duration: 3, repeat: Infinity }}
+                  className="absolute inset-12 rounded-full border-2 border-primary/40 shadow-lg shadow-primary/20"
+                />
+
+                {/* Central Radar Core */}
+                <div className="relative z-10 flex flex-col items-center">
+                  <motion.div
+                    animate={{ rotate: -360 }}
+                    transition={{ duration: 8, repeat: Infinity, ease: "linear" }}
+                    className="mb-6 p-4 bg-gradient-to-br from-primary/30 to-transparent rounded-full border border-primary/40"
+                  >
+                    <Radar className="h-16 w-16 text-primary animate-pulse" />
+                  </motion.div>
+                  
+                  <h3 className="text-2xl font-black text-center mb-2">Live Threat Detection</h3>
+                  <p className="text-xs font-bold text-muted-foreground text-center max-w-xs mb-6">
+                    Real-time monitoring of 50K+ transactions/sec
+                  </p>
+
+                  {/* Transaction Flow Indicators */}
+                  <div className="flex gap-6 items-center justify-center">
+                    {[0, 1, 2].map((i) => (
+                      <motion.div
+                        key={i}
+                        animate={{ y: [0, -8, 0] }}
+                        transition={{ duration: 1.5, repeat: Infinity, delay: i * 0.3 }}
+                        className="flex flex-col items-center gap-2"
+                      >
+                        <div className="h-2 w-2 rounded-full bg-primary/60" />
+                        <div className="h-6 w-0.5 bg-gradient-to-b from-primary/60 to-transparent" />
+                      </motion.div>
+                    ))}
+                  </div>
+
+                  {/* Stats Footer */}
+                  <div className="mt-8 grid grid-cols-3 gap-8 text-center">
+                    <div>
+                      <motion.div
+                        animate={{ opacity: [0.5, 1, 0.5] }}
+                        transition={{ duration: 2, repeat: Infinity }}
+                        className="text-lg font-black text-primary"
+                      >
+                        98.7%
+                      </motion.div>
+                      <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">Accuracy</span>
                     </div>
-                    <div className="flex items-center gap-4 mb-4">
-                       <div className="h-3 w-3 rounded-full bg-danger animate-pulse" />
-                       <span className="text-[10px] font-black uppercase text-danger tracking-widest">Threat Detected</span>
+                    <div>
+                      <motion.div
+                        animate={{ opacity: [0.5, 1, 0.5] }}
+                        transition={{ duration: 2, repeat: Infinity, delay: 0.3 }}
+                        className="text-lg font-black text-primary"
+                      >
+                        &lt;50ms
+                      </motion.div>
+                      <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">Latency</span>
                     </div>
-                    <h3 className="text-4xl font-black tracking-tighter mb-4">TXN-7341-X</h3>
-                    <p className="text-sm font-bold text-muted-foreground mb-8">Anomalous velocity detected in node Asia-Central. Auto-blocking transaction.</p>
-                    <div className="space-y-4">
-                       <div className="h-2 w-full bg-muted rounded-full">
-                         <div className="h-full w-4/5 bg-danger rounded-full" />
-                       </div>
-                       <div className="flex justify-between text-[10px] font-black italic">
-                          <span>AI RISK SCORE</span>
-                          <span>81.4% (CRITICAL)</span>
-                       </div>
+                    <div>
+                      <motion.div
+                        animate={{ opacity: [0.5, 1, 0.5] }}
+                        transition={{ duration: 2, repeat: Infinity, delay: 0.6 }}
+                        className="text-lg font-black text-primary"
+                      >
+                        24/7
+                      </motion.div>
+                      <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">Uptime</span>
                     </div>
                   </div>
-               </div> */}
+                </div>
+
+                {/* Floating Anomaly Badges */}
+                {[
+                  { label: "ML INFERENCE", delay: 0, top: "10%", right: "5%" },
+                  { label: "PATTERN MATCH", delay: 0.5, top: "75%", left: "8%" },
+                  { label: "RULES ENGINE", delay: 1, top: "50%", right: "2%" },
+                ].map((badge, i) => (
+                  <motion.div
+                    key={i}
+                    animate={{ y: [0, -12, 0], opacity: [0.6, 1, 0.6] }}
+                    transition={{ duration: 2.5, repeat: Infinity, delay: badge.delay }}
+                    className={`absolute px-3 py-1 rounded-full border border-primary/30 bg-background/50 backdrop-blur-sm text-[10px] font-black uppercase tracking-widest text-primary/80`}
+                    style={{ top: badge.top, right: badge.right, left: badge.left }}
+                  >
+                    {badge.label}
+                  </motion.div>
+                ))}
+              </div>
             </motion.div>
           </div>
-        {/* </div> */}
+        </div>
       </section>
 
       {/* ─── Visionary Step Section ───────────────────────────────────── */}
