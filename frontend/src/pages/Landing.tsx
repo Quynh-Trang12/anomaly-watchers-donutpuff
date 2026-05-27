@@ -86,12 +86,12 @@ export default function Landing() {
                 <Radar className="h-3 w-3 animate-pulse" /> Platform Enterprise
               </div>
               
-              <h1 className="text-6xl font-black tracking-tighter leading-[0.9] mb-8">
+              <h1 className="text-4xl md:text-5xl lg:text-6xl font-black tracking-tighter leading-[0.9] mb-8">
                 See the <span className="text-primary italic">Invisible</span><br/>
                 Block the <span className="underline decoration-primary/30 decoration-8 underline-offset-8">Impossible</span>
               </h1>
               
-              <p className="text-xl text-muted-foreground font-medium mb-10 max-w-xl leading-relaxed">
+              <p className="text-lg md:text-xl text-muted-foreground font-medium mb-10 max-w-xl leading-relaxed">
                 Experience the world's most advanced transaction monitoring workbench. 
                 Simulate high-velocity payment flows and witness autonomous AI in action.
               </p>
@@ -148,7 +148,7 @@ export default function Landing() {
                     <Radar className="h-16 w-16 text-primary animate-pulse" />
                   </motion.div>
                   
-                  <h3 className="text-2xl font-black text-center mb-2">Live Threat Detection</h3>
+                  <h3 className="text-2xl font-black text-center mb-2">Live Fraud Detection</h3>
                   <p className="text-xs font-bold text-muted-foreground text-center max-w-xs mb-6">
                     Real-time monitoring of 50K+ transactions/sec
                   </p>
