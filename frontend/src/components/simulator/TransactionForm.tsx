@@ -45,7 +45,7 @@ export function TransactionForm({
   refreshTrigger,
 }: TransactionFormProps) {
   const navigate = useNavigate();
-  const { userId } = useAuth();
+  const { userId, setUserId, setHasActivelySelectedUser } = useAuth();
 
   const [type, setType] = useState<string>("TRANSFER");
   const [amountRawValue, setAmountRawValue] = useState<string>("");
@@ -57,6 +57,10 @@ export function TransactionForm({
   const [currentBalance, setCurrentBalance] = useState<number>(0);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [step, setStep] = useState<number>(1);
+
+  useEffect(() => {
+    setSenderAccount(userId || MOCK_USERS[0].id);
+  }, [userId]);
 
   useEffect(() => {
     const fetchData = async () => {
@@ -284,7 +288,14 @@ export function TransactionForm({
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             <div className="space-y-2">
               <Label>Sender Account</Label>
-              <Select value={senderAccount} onValueChange={setSenderAccount}>
+              <Select
+                value={senderAccount}
+                onValueChange={(value) => {
+                  setSenderAccount(value);
+                  setUserId(value);
+                  setHasActivelySelectedUser(true);
+                }}
+              >
                 <SelectTrigger className="h-12 rounded-xl">
                   <SelectValue placeholder="Select sender..." />
                 </SelectTrigger>
