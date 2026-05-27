@@ -31,7 +31,7 @@ export const Navbar: React.FC = () => {
       <div className="w-full max-w-[1600px] mx-auto px-4 sm:px-8 flex h-16 items-center justify-between">
         <div className="flex items-center gap-6">
           <Link to="/" className="flex items-center gap-2 group transition-all">
-            <div className="bg-primary p-1.5 rounded-lg group-hover:rotate-12 transition-transform">
+            <div className="bg-primary p-1.5 rounded-lg">
               <Shield className="h-6 w-6 text-primary-foreground" />
             </div>
             <span className="font-black text-xl tracking-tight hidden sm:inline-block">
