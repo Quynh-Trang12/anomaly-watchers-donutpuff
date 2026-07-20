@@ -17,9 +17,9 @@ echo [OK] SMTP_USER set to: %SMTP_USER%
 echo.
 
 :: Navigate to backend and start FastAPI
-cd backend
+pushd "%~dp0backend"
 echo [*] Installing dependencies...
-pip install -r requirements.txt
+python -m pip install -r "%~dp0backend\requirements.txt"
 
 echo.
 echo [*] Starting FastAPI with Mailpit SMTP (localhost:1025)...
@@ -29,4 +29,5 @@ echo.
 
 python -m uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 
+popd
 pause

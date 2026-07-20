@@ -484,6 +484,48 @@ async def cancel_transaction_otp(transaction_id: str):
     }
 
 
+@app.get("/api/security/freeze")
+async def freeze_transaction(id: str):
+    """
+    Emergency Endpoint: Freezes/blocks a transaction out-of-band.
+    Typically triggered by a link in the security alert email.
+    """
+    from fastapi.responses import HTMLResponse
+    
+    record = get_transaction(id)
+    if not record:
+        raise HTTPException(status_code=404, detail="Transaction not found.")
+        
+    update_transaction_status(id, TransactionStatusEnum.BLOCKED, admin_id="system_freeze")
+    
+    html_content = f"""
+    <!DOCTYPE html>
+    <html>
+      <head>
+        <title>Security Alert - Transaction Blocked</title>
+        <meta charset="utf-8">
+      </head>
+      <body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; line-height: 1.6; color: #1e293b; background-color: #f8fafc; padding: 20px; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0;">
+        <div style="max-width: 500px; width: 100%; background: #ffffff; border-radius: 24px; overflow: hidden; box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.1), 0 8px 10px -6px rgba(0, 0, 0, 0.1); padding: 40px; text-align: center; border: 1px solid #e2e8f0;">
+          <div style="display: inline-flex; align-items: center; justify-content: center; width: 64px; height: 64px; border-radius: 50%; background-color: #fee2e2; margin-bottom: 24px;">
+            <svg style="width: 32px; height: 32px; color: #ef4444;" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m0 0v3m0-3h3m-3 0H9m12 0a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+            </svg>
+          </div>
+          <h1 style="color: #0f172a; font-size: 24px; margin-top: 0; margin-bottom: 12px; font-weight: 800;">Transaction Blocked</h1>
+          <p style="font-size: 16px; color: #64748b; margin-bottom: 24px; margin-top: 0;">For your protection, transaction <strong style="color: #0f172a; font-family: monospace;">{id}</strong> has been immediately blocked and cancelled. No funds have been transferred.</p>
+          <div style="background-color: #f1f5f9; border-radius: 12px; padding: 16px; font-size: 14px; color: #475569; font-weight: 600; margin-bottom: 24px;">
+            Security Action: Emergency Email Override
+          </div>
+          <p style="font-size: 12px; color: #94a3b8; margin: 0;">You can close this window now. If you did not authorize this, please contact support immediately.</p>
+        </div>
+      </body>
+    </html>
+    """
+    return HTMLResponse(content=html_content, status_code=200)
+
+
+
 @app.get("/api/users/{user_id}/status")
 async def get_user_status(user_id: str):
     """

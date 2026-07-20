@@ -16,6 +16,7 @@ import {
   getTransactionStatus,
   cancelTransactionOTP,
   getUserTransactions,
+  saveTransaction,
 } from "@/api";
 import { toast } from "sonner";
 
@@ -26,7 +27,7 @@ interface OTPChallengeProps {
   onCancel?: () => void;
 }
 
-const TIMER_SECONDS = 20; // 5 minutes for OTP verification
+const TIMER_SECONDS = 300; // 5 minutes for OTP verification
 
 export function OTPChallenge({
   transactionId,
@@ -113,6 +114,20 @@ export function OTPChallenge({
 
     try {
       await verifyOTP(transactionId, otp);
+      
+      // Fetch the transaction details
+      const txRecord = await getTransactionStatus(transactionId);
+      
+      // Transition status to APPROVED and pass the otp_code for Backend Authority check
+      const approvedRecord = {
+        ...txRecord,
+        status: "APPROVED" as const,
+        otp_code: otp,
+      };
+      
+      // Call backend to deduct the balance and commit the transaction
+      await saveTransaction(approvedRecord);
+
       isFinished.current = true;
       setStatus("success");
       if (timerRef.current) clearInterval(timerRef.current);

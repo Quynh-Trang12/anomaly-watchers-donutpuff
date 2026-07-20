@@ -7,7 +7,7 @@ echo ===================================================
 
 :: Start Backend with dedicated startup script (ensures Mailpit env vars are set)
 echo [*] Starting FastAPI Backend with Mailpit SMTP...
-start "BACKEND" cmd /k "call start_backend.bat"
+start "BACKEND" /D "%~dp0" cmd /k "start_backend.bat"
 
 :: Start Frontend
 echo [*] Starting React Frontend...
