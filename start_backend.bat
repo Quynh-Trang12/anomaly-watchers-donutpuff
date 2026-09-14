@@ -1,5 +1,12 @@
 @echo off
-REM Backend startup script with explicit Mailpit environment variables
+setlocal EnableExtensions
+
+set "PROJECT_ROOT=%~dp0"
+pushd "%PROJECT_ROOT%backend" || (
+	echo [ERROR] Could not find the backend directory at "%PROJECT_ROOT%backend".
+	pause
+	exit /b 1
+)
 
 echo ===================================================
 echo [BACKEND] Mailpit SMTP Configuration
@@ -16,10 +23,14 @@ echo [OK] SMTP_PORT set to: %SMTP_PORT%
 echo [OK] SMTP_USER set to: %SMTP_USER%
 echo.
 
-:: Navigate to backend and start FastAPI
-cd backend
 echo [*] Installing dependencies...
-pip install -r requirements.txt
+python -m pip install -r requirements.txt
+if errorlevel 1 (
+	echo [ERROR] Backend dependency installation failed.
+	popd
+	pause
+	exit /b 1
+)
 
 echo.
 echo [*] Starting FastAPI with Mailpit SMTP (localhost:1025)...
@@ -29,4 +40,5 @@ echo.
 
 python -m uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 
+popd
 pause
